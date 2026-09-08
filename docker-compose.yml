@@ -1,0 +1,23 @@
+services:
+  sironyan-bot:
+    build: .
+    container_name: sironyan-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+
+  sironyan-web:
+    build: .
+    container_name: sironyan-web
+    command: ["python", "web/app.py"]
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      # 나스에 UtaHime(5050)도 같이 떠 있다면 포트가 겹치지 않게 5051처럼 다른 값을 쓰세요.
+      # 왼쪽(호스트) 숫자만 바꾸면 되고, 오른쪽(컨테이너 내부) 5000은 그대로 둡니다.
+      - "5051:5000"
+    volumes:
+      - ./data:/app/data
