@@ -13,17 +13,17 @@
 data/settings.json에 저장된다. 실행 중인 봇(main.py)이 그 값을 계속 읽어서 실제 동작
 (이모지 반응 감지 -> 역할 부여, 허브 채널 입장 -> 개인 채널 생성)을 수행한다.
 
-인증은 OAuth 없이 "비밀 토큰 링크" 방식이다: 처음 접속할 때 주소 끝에
-`?token=<WEB_ADMIN_TOKEN>`을 붙이면 로그인되고, 이후에는 브라우저 세션 쿠키로 유지된다.
+인증은 로그인 페이지(비밀번호 입력) 방식이다. 주소 자체에는 비밀 값이 없고,
+처음 접속하면 /login으로 보내져서 WEB_ADMIN_TOKEN 값을 비밀번호로 입력해야 들어갈 수
+있다. 한 번 입력하면 브라우저 세션 쿠키로 로그인 상태가 유지된다.
 """
 from __future__ import annotations
 
 import os
 import sys
-from urllib.parse import urlencode
 
 from dotenv import load_dotenv
-from flask import Flask, abort, redirect, render_template, request, session, url_for
+from flask import Flask, redirect, render_template, request, session, url_for
 
 # "python web/app.py"로 실행하면 파이썬이 기본적으로 web/ 폴더만 찾다보니, 한 단계
 # 위에 있는 core/ 폴더(core/discord_api.py, core/settings_store.py)를 못 찾아서
@@ -43,15 +43,6 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY") or os.urandom(24)
 if not WEB_ADMIN_TOKEN:
     print("⚠️ [WARN] WEB_ADMIN_TOKEN이 설정되지 않았습니다. 아무도 로그인할 수 없습니다 (.env 확인).")
 
-# 메이플스토리 5대 직업군과 기본 이모지. 직업 종류를 바꾸고 싶으면 여기만 고치면 된다.
-DEFAULT_JOB_EMOJIS = {
-    "전사": "⚔️",
-    "마법사": "🔮",
-    "궁수": "🏹",
-    "도적": "🗡️",
-    "해적": "🏴‍☠️",
-}
-
 # 길드 직급 목록 (위쪽일수록 높은 직급). 이모지로 셀프 지급하면 아무나 "길드마스터"를
 # 누를 수 있게 되므로, 직급은 아래 멤버 목록에서 관리자가 직접 눌러서만 부여한다.
 GUILD_RANKS = ["길드마스터", "부길드장", "길드원", "신입길드원"]
@@ -59,25 +50,27 @@ GUILD_RANKS = ["길드마스터", "부길드장", "길드원", "신입길드원"
 
 @app.before_request
 def require_auth():
-    if request.endpoint == "static":
+    if request.endpoint in ("static", "login"):
         return None
-
     if session.get("authed"):
         return None
-
-    token = request.args.get("token")
-    if WEB_ADMIN_TOKEN and token == WEB_ADMIN_TOKEN:
-        session["authed"] = True
-        remaining = {k: v for k, v in request.args.items() if k != "token"}
-        query = f"?{urlencode(remaining)}" if remaining else ""
-        return redirect(request.path + query)
-
-    abort(403)
+    return redirect(url_for("login", next=request.path))
 
 
-@app.errorhandler(403)
-def forbidden(_e):
-    return "접근 권한이 없습니다. 올바른 링크(토큰 포함)로 접속해주세요.", 403
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        if WEB_ADMIN_TOKEN and request.form.get("password") == WEB_ADMIN_TOKEN:
+            session["authed"] = True
+            return redirect(request.args.get("next") or url_for("index"))
+        return render_template("login.html", error=True)
+    return render_template("login.html", error=False)
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 @app.route("/")
@@ -96,6 +89,7 @@ def _load_guild_context(guild_id: int) -> dict:
     settings = settings_store.get_guild_settings(guild_id)
     rank_role_ids: dict = settings.get("rank_role_ids", {})
     role_id_to_rank = {str(role_id): rank for rank, role_id in rank_role_ids.items()}
+    roles_by_id = {int(r["id"]): r["name"] for r in roles}
 
     members = []
     for m in members_raw:
@@ -111,22 +105,17 @@ def _load_guild_context(guild_id: int) -> dict:
             }
         )
 
-    # 템플릿에서 "이 직업은 이미 어떤 역할/이모지로 저장되어 있는지" 바로 꺼내 쓰도록 미리 정리.
-    job_current = {}
-    for emoji, entry in (settings.get("job_roles", {}).get("emoji_to_role") or {}).items():
-        job_current[entry["label"]] = {"role_id": entry["role_id"], "emoji": emoji}
-
     return {
         "guild_id": guild_id,
         "text_channels": [c for c in channels if c["type"] == 0],
         "voice_channels": [c for c in channels if c["type"] == 2],
         "categories": [c for c in channels if c["type"] == 4],
         "roles": roles,
+        "roles_by_id": roles_by_id,
         "members": sorted(members, key=lambda m: m["name"].lower()),
         "settings": settings,
-        "default_job_emojis": DEFAULT_JOB_EMOJIS,
+        "job_list": settings.get("job_list", []),
         "guild_ranks": GUILD_RANKS,
-        "job_current": job_current,
         "rank_role_ids": rank_role_ids,
     }
 
@@ -136,19 +125,51 @@ def guild_page(guild_id):
     return render_template("settings.html", **_load_guild_context(guild_id))
 
 
+@app.route("/guild/<int:guild_id>/jobs/add", methods=["POST"])
+def add_job(guild_id):
+    """직업 목록에 한 줄 추가한다 (직업 이름 + 이모지 + 역할). 개수 제한 없음."""
+    label = (request.form.get("label") or "").strip()
+    emoji = (request.form.get("emoji") or "").strip()
+    role_id = request.form.get("role_id")
+
+    if label and emoji and role_id:
+        settings = settings_store.get_guild_settings(guild_id)
+        job_list = settings.get("job_list", [])
+        job_list.append({"label": label, "emoji": emoji, "role_id": int(role_id)})
+        settings_store.update_guild_settings(guild_id, job_list=job_list)
+
+    return redirect(url_for("guild_page", guild_id=guild_id))
+
+
+@app.route("/guild/<int:guild_id>/jobs/delete", methods=["POST"])
+def delete_job(guild_id):
+    """직업 목록에서 한 줄을 뺀다."""
+    index = request.form.get("index", type=int)
+    settings = settings_store.get_guild_settings(guild_id)
+    job_list = settings.get("job_list", [])
+
+    if index is not None and 0 <= index < len(job_list):
+        job_list.pop(index)
+        settings_store.update_guild_settings(guild_id, job_list=job_list)
+
+    return redirect(url_for("guild_page", guild_id=guild_id))
+
+
 @app.route("/guild/<int:guild_id>/job-roles", methods=["POST"])
 def post_job_roles(guild_id):
+    """지금까지 추가해둔 직업 목록으로 실제 공지 메시지를 올리고 이모지를 붙인다."""
     channel_id = int(request.form["channel_id"])
+    settings = settings_store.get_guild_settings(guild_id)
+    job_list = settings.get("job_list", [])
+
+    if not job_list:
+        return redirect(url_for("guild_page", guild_id=guild_id))
 
     emoji_to_role = {}
     lines = []
-    for job in DEFAULT_JOB_EMOJIS:
-        role_id = request.form.get(f"role_{job}")
-        if not role_id:
-            continue  # 관리자가 해당 직업 역할을 아직 안 골랐으면 건너뛴다.
-        emoji = (request.form.get(f"emoji_{job}") or DEFAULT_JOB_EMOJIS[job]).strip()
-        emoji_to_role[emoji] = {"role_id": int(role_id), "label": job}
-        lines.append(f"{emoji}  {job}")
+    for job in job_list:
+        emoji_to_role[job["emoji"]] = {"role_id": job["role_id"], "label": job["label"]}
+        lines.append(f"{job['emoji']}  {job['label']}")
 
     embed = {
         "title": "🍁 직업을 선택해주세요",

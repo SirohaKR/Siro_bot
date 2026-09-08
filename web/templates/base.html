@@ -27,9 +27,21 @@
       background: var(--accent);
       color: white;
       padding: 18px 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
     }
     header h1 { margin: 0; font-size: 20px; }
     header p { margin: 4px 0 0; font-size: 13px; opacity: 0.9; }
+    header form button {
+      margin-top: 0;
+      background: rgba(255, 255, 255, 0.18);
+      font-size: 12px;
+      padding: 6px 12px;
+      white-space: nowrap;
+    }
+    header form button:hover { background: rgba(255, 255, 255, 0.3); }
     main {
       max-width: 760px;
       margin: 24px auto 64px;
@@ -87,8 +99,15 @@
 </head>
 <body>
   <header>
-    <h1>🐾 시로냥 설정 페이지</h1>
-    <p>메이플스토리 길드 역할·채널 관리 — 여기서 정한 값대로 봇이 실제로 동작합니다.</p>
+    <div>
+      <h1>🐾 시로냥 설정 페이지</h1>
+      <p>메이플스토리 길드 역할·채널 관리 — 여기서 정한 값대로 봇이 실제로 동작합니다.</p>
+    </div>
+    {% if session.get('authed') %}
+    <form method="post" action="{{ url_for('logout') }}">
+      <button type="submit">로그아웃</button>
+    </form>
+    {% endif %}
   </header>
   <main>
     {% block content %}{% endblock %}

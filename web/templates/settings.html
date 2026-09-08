@@ -5,32 +5,59 @@
 <div class="card">
   <h2>1. 직업 선택 공지 만들기</h2>
   <p class="desc">
-    공지 채널과 직업별 역할을 고르고 "게시하기"를 누르면, 그 채널에 메시지가 올라가고
-    이모티콘이 자동으로 붙습니다. 길드원이 이모티콘을 누르면 역할이 붙고, 다른 이모티콘을
-    누르면 이전 것으로 자동 교체됩니다.
+    직업을 원하는 만큼 추가/삭제해서 목록을 만든 다음, 공지 채널을 골라 "게시하기"를
+    누르면 그 채널에 메시지가 올라가고 이모티콘이 자동으로 붙습니다. 길드원이 이모티콘을
+    누르면 역할이 붙고, 다른 이모티콘을 누르면 이전 것으로 자동 교체됩니다.
   </p>
-  <form method="post" action="{{ url_for('post_job_roles', guild_id=guild_id) }}">
+
+  <table>
+    {% for job in job_list %}
+    <tr>
+      <td style="width:36px;font-size:18px;">{{ job.emoji }}</td>
+      <td>{{ job.label }}</td>
+      <td class="tag">{{ roles_by_id.get(job.role_id, '(삭제된 역할)') }}</td>
+      <td style="width:70px;">
+        <form method="post" action="{{ url_for('delete_job', guild_id=guild_id) }}">
+          <input type="hidden" name="index" value="{{ loop.index0 }}">
+          <button type="submit" style="margin:0;background:#c0524f;padding:4px 10px;font-size:12px;">삭제</button>
+        </form>
+      </td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="tag">아직 추가된 직업이 없습니다. 아래에서 하나씩 추가해주세요.</td></tr>
+    {% endfor %}
+  </table>
+
+  <form method="post" action="{{ url_for('add_job', guild_id=guild_id) }}" style="margin-top:14px;">
+    <div class="row">
+      <div>
+        <label>직업 이름</label>
+        <input type="text" name="label" placeholder="예: 히어로" required>
+      </div>
+      <div>
+        <label>이모티콘</label>
+        <input type="text" name="emoji" placeholder="예: 🦸" required>
+      </div>
+      <div>
+        <label>역할</label>
+        <select name="role_id" required>
+          {% for r in roles %}
+          <option value="{{ r.id }}">{{ r.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    <button type="submit">➕ 목록에 추가</button>
+  </form>
+
+  <form method="post" action="{{ url_for('post_job_roles', guild_id=guild_id) }}" style="margin-top:18px;border-top:1px solid var(--border);padding-top:14px;">
     <label>공지를 올릴 채널</label>
     <select name="channel_id" required>
       {% for c in text_channels %}
       <option value="{{ c.id }}" {% if settings.announcement_channel_id == c.id|int %}selected{% endif %}>#{{ c.name }}</option>
       {% endfor %}
     </select>
-
-    {% for job, default_emoji in default_job_emojis.items() %}
-    <div class="job-row">
-      <span>{{ job }}</span>
-      <select name="role_{{ job }}">
-        <option value="">(사용 안 함)</option>
-        {% for r in roles %}
-        <option value="{{ r.id }}" {% if job_current.get(job) and job_current[job].role_id == r.id|int %}selected{% endif %}>{{ r.name }}</option>
-        {% endfor %}
-      </select>
-      <input type="text" name="emoji_{{ job }}" value="{{ job_current.get(job).emoji if job_current.get(job) else default_emoji }}">
-    </div>
-    {% endfor %}
-
-    <button type="submit">📢 공지 게시하기</button>
+    <button type="submit" {% if not job_list %}disabled{% endif %}>📢 공지 게시하기</button>
   </form>
 </div>
 
