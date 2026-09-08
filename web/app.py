@@ -19,12 +19,19 @@ data/settings.json에 저장된다. 실행 중인 봇(main.py)이 그 값을 계
 from __future__ import annotations
 
 import os
+import sys
 from urllib.parse import urlencode
 
 from dotenv import load_dotenv
 from flask import Flask, abort, redirect, render_template, request, session, url_for
 
-from core import discord_api, settings_store
+# "python web/app.py"로 실행하면 파이썬이 기본적으로 web/ 폴더만 찾다보니, 한 단계
+# 위에 있는 core/ 폴더(core/discord_api.py, core/settings_store.py)를 못 찾아서
+# "ModuleNotFoundError: No module named 'core'" 오류가 난다. 아래 줄로 프로젝트
+# 최상위 폴더(main.py가 있는 곳)를 검색 경로에 직접 추가해서 해결한다.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from core import discord_api, settings_store  # noqa: E402
 
 load_dotenv()
 
