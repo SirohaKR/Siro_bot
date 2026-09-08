@@ -1,3 +1,9 @@
+# 프로젝트 이름을 여기서 고정해두면, 어느 폴더/방법(GUI든 CLI든)으로 실행하든 항상
+# 같은 프로젝트로 인식돼서 컨테이너 이름 충돌이 안 난다. Container Manager에서 만든
+# "siro-bot" 프로젝트와 이름을 맞춰서, 앞으로는 -p 옵션 없이 "docker compose up"만
+# 쳐도 자동으로 이 프로젝트로 인식된다.
+name: siro-bot
+
 services:
   sironyan-bot:
     build: .
