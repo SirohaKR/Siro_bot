@@ -47,9 +47,22 @@ async def on_ready():
 
     try:
         synced = await bot.tree.sync()
-        print(f"🌳 슬래시 명령어 동기화 완료 ({len(synced)}개)")
+        print(f"🌳 슬래시 명령어 글로벌 동기화 완료 ({len(synced)}개)")
     except Exception as e:
-        print(f"⚠️ 슬래시 명령어 동기화 실패: {e}")
+        print(f"⚠️ 슬래시 명령어 글로벌 동기화 실패: {e}")
+
+    # 글로벌 동기화는 각 서버에 실제로 반영되기까지 최대 1시간까지 걸릴 수 있다.
+    # .env에 MY_GUILD_ID(길드마스터가 쓰는 서버 ID)를 적어두면, 그 서버에는
+    # 디스코드 쪽 지연 없이 바로 명령어가 뜨게 별도로 동기화해준다.
+    guild_id = os.getenv("MY_GUILD_ID")
+    if guild_id:
+        try:
+            guild_obj = discord.Object(id=int(guild_id))
+            bot.tree.copy_global_to(guild=guild_obj)
+            synced_guild = await bot.tree.sync(guild=guild_obj)
+            print(f"🌳 슬래시 명령어 길드 동기화 완료 (guild={guild_id}, {len(synced_guild)}개)")
+        except Exception as e:
+            print(f"⚠️ 슬래시 명령어 길드 동기화 실패: {e}")
 
     print("=" * 40 + "\n")
 
