@@ -23,6 +23,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 INITIAL_EXTENSIONS = [
     "cogs.roles",
     "cogs.channels",
+    "cogs.info",  # "/설정" 명령어 — 웹 설정 페이지 주소를 알려줌
 ]
 
 # Intents(인텐트) = 봇이 디스코드로부터 받을 이벤트의 종류를 미리 선언하는 것.
@@ -43,6 +44,13 @@ async def on_ready():
     print(f"봇 이름: {bot.user.name}")
     print(f"봇 ID: {bot.user.id}")
     print("✅ 시로냥 봇 실행/연결 완료")
+
+    try:
+        synced = await bot.tree.sync()
+        print(f"🌳 슬래시 명령어 동기화 완료 ({len(synced)}개)")
+    except Exception as e:
+        print(f"⚠️ 슬래시 명령어 동기화 실패: {e}")
+
     print("=" * 40 + "\n")
 
 
