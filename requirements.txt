@@ -1,0 +1,6 @@
+discord.py>=2.7.1
+python-dotenv>=1.0.1
+
+# 웹 설정 페이지 (web/app.py)
+flask>=3.0.0
+requests>=2.31.0

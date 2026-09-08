@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}서버 선택 — 시로냥 설정{% endblock %}
+{% block content %}
+<div class="card">
+  <h2>어느 서버를 설정할까요?</h2>
+  <p class="desc">시로냥 봇이 들어가 있는 서버 목록입니다.</p>
+  <table>
+    {% for g in guilds %}
+    <tr>
+      <td>{{ g.name }}</td>
+      <td><a href="{{ url_for('guild_page', guild_id=g.id) }}">설정 열기 →</a></td>
+    </tr>
+    {% else %}
+    <tr><td>봇이 아직 어느 서버에도 들어가 있지 않습니다. 먼저 서버에 초대해주세요.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
