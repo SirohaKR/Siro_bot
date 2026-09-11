@@ -2,11 +2,12 @@
 """
 잡다한 편의 명령어를 담는 Cog. 지금은 "/설정" 하나뿐이다.
 
-/설정 명령어는 관리자가 웹 설정 페이지(web/app.py) 주소를 매번 따로 기억하거나
-찾아보지 않아도, 디스코드에서 바로 받아볼 수 있게 해주는 지름길이다. 페이지 자체는
-로그인(비밀번호 입력) 페이지가 앞을 막고 있지만, 그래도 주소는 아무나 알 필요가
-없으므로 답장은 명령어를 사용한 사람에게만 보이게(ephemeral) 하고, 사용 권한도
-"역할 관리" 권한이 있는 사람으로 제한한다.
+/설정 명령어는 웹 설정 페이지(web/app.py) 주소를 디스코드에서 바로 받아볼 수 있게
+해주는 지름길이다. 페이지 자체는 로그인(비밀번호 입력)이 앞을 막고 있지만, 그래도
+"이런 명령어가 있다"는 것조차 서버 소유자 말고는 몰라도 되므로 이 명령어는 서버를
+만든 사람(길드 소유자) 한 명만 쓸 수 있게 제한한다. 부관리자 등 "역할 관리" 권한이
+있는 다른 사람도 여기서는 제외된다 — 그런 사람에게도 페이지를 열어주고 싶으면
+비밀번호를 직접 알려주면 된다.
 """
 from __future__ import annotations
 
@@ -17,12 +18,21 @@ from discord import app_commands
 from discord.ext import commands
 
 
+def is_guild_owner():
+    """서버를 만든 사람(길드 소유자)만 통과시키는 슬래시 명령어 체크."""
+
+    async def predicate(interaction: discord.Interaction) -> bool:
+        return interaction.guild is not None and interaction.user.id == interaction.guild.owner_id
+
+    return app_commands.check(predicate)
+
+
 class Info(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="설정", description="[관리자] 시로냥 웹 설정 페이지 주소를 알려줍니다.")
-    @app_commands.checks.has_permissions(manage_roles=True)
+    @app_commands.command(name="설정", description="[서버 소유자 전용] 시로냥 웹 설정 페이지 주소를 알려줍니다.")
+    @is_guild_owner()
     async def settings_url(self, interaction: discord.Interaction):
         base_url = os.getenv("WEB_PUBLIC_URL")
 
@@ -41,9 +51,9 @@ class Info(commands.Cog):
     async def cog_app_command_error(
         self, interaction: discord.Interaction, error: app_commands.AppCommandError
     ):
-        if isinstance(error, app_commands.MissingPermissions):
+        if isinstance(error, app_commands.CheckFailure):
             await interaction.response.send_message(
-                "⚠️ 이 명령어는 '역할 관리' 권한이 있어야 사용할 수 있습니다.", ephemeral=True
+                "⚠️ 이 명령어는 서버 소유자만 사용할 수 있습니다.", ephemeral=True
             )
             return
         raise error
