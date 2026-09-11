@@ -71,7 +71,7 @@
     .card p.desc { color: var(--muted); font-size: 13px; margin: 6px 0 0; }
 
     label { display: block; font-size: 13px; margin: 12px 0 4px; font-weight: 600; color: var(--text); }
-    select, input[type=text], input[type=password] {
+    select, input[type=text], input[type=password], textarea {
       width: 100%;
       padding: 9px 11px;
       border: 1px solid var(--card-border);
@@ -79,6 +79,8 @@
       font-size: 14px;
       background: var(--panel);
       color: var(--text);
+      font-family: inherit;
+      resize: vertical;
     }
     select:focus, input:focus { outline: none; border-color: var(--accent); }
 
