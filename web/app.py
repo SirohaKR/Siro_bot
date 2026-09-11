@@ -122,17 +122,15 @@ def _load_guild_context(guild_id: int) -> dict:
 
 
 def _save_announcement_draft(guild_id: int) -> None:
-    """공지 제목/본문/이미지 입력값을 저장해둔다.
+    """공지 제목/본문 입력값을 저장해둔다. (이미지는 파일 첨부라 새로고침 후 되살릴 수
+    없으므로 드래프트로 관리하지 않고, 게시할 때만 그 자리에서 첨부받는다)
 
     "목록에 추가"/"삭제"를 누를 때마다 페이지가 새로고침되는데, 그때 지금까지
     입력해둔 공지 내용이 날아가지 않도록 매번 같이 저장해서 다시 채워 넣는다.
     """
     title = (request.form.get("title") or "").strip()
     body = (request.form.get("body") or "").strip()
-    image_url = (request.form.get("image_url") or "").strip()
-    settings_store.update_guild_settings(
-        guild_id, announcement_draft={"title": title, "body": body, "image_url": image_url}
-    )
+    settings_store.update_guild_settings(guild_id, announcement_draft={"title": title, "body": body})
 
 
 @app.route("/guild/<int:guild_id>")
@@ -182,6 +180,7 @@ def post_job_roles(guild_id):
     title = (request.form.get("title") or "").strip() or "공지"
     body = (request.form.get("body") or "").strip()
     image_url = (request.form.get("image_url") or "").strip()
+    image_file = request.files.get("image_file")
     _save_announcement_draft(guild_id)
 
     settings = settings_store.get_guild_settings(guild_id)
@@ -202,10 +201,17 @@ def post_job_roles(guild_id):
         description += ("\n\n" if description else "") + "\n".join(lines)
 
     embed = {"title": title, "description": description, "color": 0x57F287}
-    if image_url:
-        embed["image"] = {"url": image_url}
 
-    message = discord_api.send_message(channel_id, embed)
+    if image_file and image_file.filename:
+        # 파일을 첨부해서 보낸다 (어딘가에 미리 업로드해서 URL을 만들 필요가 없다).
+        filename = image_file.filename
+        embed["image"] = {"url": f"attachment://{filename}"}
+        message = discord_api.send_message_with_file(channel_id, embed, filename, image_file.read())
+    else:
+        if image_url:
+            embed["image"] = {"url": image_url}
+        message = discord_api.send_message(channel_id, embed)
+
     for emoji in emoji_to_role:
         discord_api.add_reaction(channel_id, message["id"], emoji)
 

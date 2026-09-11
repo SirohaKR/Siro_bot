@@ -13,6 +13,7 @@ main.py가 켜져 있어야 일어난다 (그건 실시간 감시가 필요한 �
 """
 from __future__ import annotations
 
+import json
 import os
 from urllib.parse import quote
 
@@ -72,6 +73,23 @@ def send_message(channel_id: int, embed: dict) -> dict:
     """채널에 임베드 메시지를 보낸다. 성공하면 생성된 메시지 정보(id 포함)를 돌려준다."""
     r = requests.post(
         f"{API_BASE}/channels/{channel_id}/messages", headers=_headers(), json={"embeds": [embed]}, timeout=10
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def send_message_with_file(channel_id: int, embed: dict, filename: str, file_bytes: bytes) -> dict:
+    """이미지를 URL이 아니라 파일 그대로 첨부해서 임베드 메시지를 보낸다.
+
+    embed["image"]["url"]을 "attachment://<filename>"으로 넣어두면, 디스코드가 같이
+    보낸 첨부파일과 그 이름으로 매칭해서 임베드 안에 그 이미지를 띄워준다. 어딘가에
+    미리 업로드해서 공개 URL을 만들어둘 필요가 없다.
+    """
+    payload_json = json.dumps({"embeds": [embed]})
+    files = {"files[0]": (filename, file_bytes)}
+    data = {"payload_json": payload_json}
+    r = requests.post(
+        f"{API_BASE}/channels/{channel_id}/messages", headers=_headers(), data=data, files=files, timeout=20
     )
     r.raise_for_status()
     return r.json()
