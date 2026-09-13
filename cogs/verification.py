@@ -139,6 +139,19 @@ class Verification(commands.Cog):
         embed = discord.Embed(title=title, description=body, color=0x5B8CFF)
         await thread.send(content=member.mention, embed=embed)
 
+        # 비공개 스레드는 초대된 사람만 볼 수 있어서, 만들어둬도 관리자가 못 보고 지나칠 수
+        # 있다. '역할 관리' 권한이 있는 사람은 자동으로 스레드에 넣고 멘션까지 남겨서
+        # 새 인증 요청이 왔다는 걸 바로 알 수 있게 한다.
+        admins = [m for m in guild.members if not m.bot and m.id != member.id and _is_verify_admin(m)]
+        for admin in admins:
+            try:
+                await thread.add_user(admin)
+            except discord.HTTPException:
+                pass
+        if admins:
+            mentions = " ".join(a.mention for a in admins)
+            await thread.send(f"🔔 {mentions} 새 캐릭터 인증 요청이 도착했어요!")
+
         threads_map[str(member.id)] = thread.id
         verification["threads"] = threads_map
         update_guild_settings(guild.id, verification=verification)
@@ -236,7 +249,18 @@ class Verification(commands.Cog):
                 return
 
             await interaction.response.defer()
-            await member.add_roles(role, reason=f"캐릭터 인증 승인 (관리자: {admin})")
+            try:
+                await member.add_roles(role, reason=f"캐릭터 인증 승인 (관리자: {admin})")
+            except discord.Forbidden:
+                await interaction.followup.send(
+                    "⚠️ 역할을 부여할 권한이 없어요. 서버 설정 → 역할에서 봇 역할을 "
+                    f"'{role.name}' 역할보다 위로 옮겨주세요.",
+                    ephemeral=True,
+                )
+                return
+            except discord.HTTPException as e:
+                await interaction.followup.send(f"⚠️ 역할 부여 중 오류가 났어요: {e}", ephemeral=True)
+                return
 
             resolved_embed = original_embed.copy()
             resolved_embed.color = 0x57F287

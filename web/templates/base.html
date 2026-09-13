@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}시로냥 설정{% endblock %}</title>
+  <title>{% block title %}어시스턴트 레일라 설정{% endblock %}</title>
   <style>
     /* MEE6 대시보드 느낌 참고: 다크 배경 + 왼쪽 사이드바 + 카드형 모듈 + 파란 액센트 */
     :root {
@@ -50,7 +50,7 @@
       gap: 20px;
     }
 
-    /* 시로냥 로고/타이틀 공통 */
+    /* 어시스턴트 레일라 로고/타이틀 공통 */
     .brand { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; }
 
     /* 카드형 모듈 — 아이콘 배지 + 제목 */
@@ -114,7 +114,7 @@
   {% block body %}
   <header class="topbar">
     <div>
-      <h1>🐾 시로냥 설정 페이지</h1>
+      <h1>🐾 어시스턴트 레일라 설정 페이지</h1>
       <p>메이플스토리 길드 역할·채널 관리 — 여기서 정한 값대로 봇이 실제로 동작합니다.</p>
     </div>
     {% if session.get('authed') %}

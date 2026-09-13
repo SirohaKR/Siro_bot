@@ -51,7 +51,8 @@ discordBot_시로냥/
 ## 4. 봇을 서버에 초대하기
 
 1. 왼쪽 메뉴 **OAuth2 → URL Generator**로 이동
-2. **SCOPES**에서 `bot` 체크 (슬래시 명령어를 안 쓰므로 `applications.commands`는 필요 없음)
+2. **SCOPES**에서 `bot`과 `applications.commands` 둘 다 체크
+   (`applications.commands`가 빠지면 `/설정` 같은 슬래시 명령어가 그 서버에 영원히 동기화되지 않습니다)
 3. **BOT PERMISSIONS**에서 아래 권한 체크
    - Manage Roles (역할 관리) — 인증 승인 시 역할 부여, 직급 역할 부여
    - Manage Channels (채널 관리) — 파티모집 개인 채널 생성/삭제
@@ -152,6 +153,10 @@ DSM 버전에 따라 위치가 다를 수 있음)에서 원하는 URL(예: `siro
 
 ## 8. 자주 겪는 문제
 
+- **`/설정` 등 슬래시 명령어가 서버에 안 뜨거나 동기화가 안 돼요** → 4단계에서 봇을 초대할 때
+  OAuth2 SCOPES에 `applications.commands`를 빼먹었을 가능성이 큽니다. Developer Portal에서
+  URL Generator로 `bot` + `applications.commands`를 함께 체크해서 새 URL을 만든 다음, 봇을
+  빼지 않고 같은 서버로 다시 초대(재인증)하면 스코프가 추가됩니다.
 - **로그인 화면에서 비밀번호가 계속 틀렸다고 떠요** → `.env`의 `WEB_ADMIN_TOKEN` 값과
   정확히 같은지 확인하세요 (대소문자/공백 포함).
 - **역할/멤버 목록이 비어 보여요** → 3단계의 SERVER MEMBERS INTENT를 켰는지 확인하고,
