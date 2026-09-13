@@ -277,6 +277,13 @@ class Verification(commands.Cog):
             resolved_embeds[0].set_footer(text=f"✅ {admin.display_name}님이 승인함")
             await interaction.edit_original_response(embeds=resolved_embeds, view=None)
 
+            # 승인 버튼을 누른 카드에 붙어있던 이미지만이 아니라, 이 스레드에 그동안
+            # 이 사람이 올린 이미지를 전부 훑어서 로그에 남긴다 (여러 메시지로 나눠
+            # 올렸어도 빠짐없이 모으려고).
+            image_urls: list[str] = []
+            if isinstance(thread, discord.Thread):
+                image_urls = await self._collect_thread_images(thread, target_id)
+
             if isinstance(thread, discord.Thread):
                 await thread.send(f"🎉 {member.mention}님의 인증이 승인되어 역할이 부여됐어요!")
                 try:
@@ -284,7 +291,7 @@ class Verification(commands.Cog):
                 except discord.HTTPException:
                     pass
 
-            await self._log_verification(guild, verification, member, role, admin, original_embeds)
+            await self._log_verification(guild, verification, member, role, admin, image_urls)
         else:
             await interaction.response.defer()
 
@@ -297,6 +304,24 @@ class Verification(commands.Cog):
             if isinstance(thread, discord.Thread):
                 await thread.send(f"❌ 인증 이미지가 거절됐어요. <@{target_id}>님, 다른 이미지로 다시 업로드해주세요.")
 
+    async def _collect_thread_images(self, thread: discord.Thread, member_id: int) -> list[str]:
+        """인증 스레드의 대화 기록 전체를 훑어서, 그 멤버가 올린 이미지 URL을 전부 모은다.
+
+        여러 메시지로 나눠 올렸어도(예: 사진1 먼저 보내고, 나중에 사진2 추가로 보내고)
+        승인 버튼을 한 번만 눌러도 그동안 올라온 이미지를 빠짐없이 로그에 남기기 위함.
+        """
+        urls: list[str] = []
+        try:
+            async for msg in thread.history(limit=200, oldest_first=True):
+                if msg.author.id != member_id:
+                    continue
+                for attachment in msg.attachments:
+                    if _is_image_attachment(attachment):
+                        urls.append(attachment.url)
+        except discord.HTTPException:
+            pass
+        return urls
+
     async def _log_verification(
         self,
         guild: discord.Guild,
@@ -304,11 +329,12 @@ class Verification(commands.Cog):
         member: discord.Member,
         role: discord.Role,
         admin: discord.Member,
-        submitted_embeds: list[discord.Embed],
+        image_urls: list[str],
     ) -> None:
         """웹 설정에서 '인증 로그 채널'을 지정해뒀으면, 승인된 인증 내역을 거기 정리해서 남긴다.
 
-        인증 이미지가 여러 장이었으면(임베드가 여러 개), 첫 장만이 아니라 전부 남긴다.
+        image_urls는 스레드 전체에서 모은 이미지라 여러 장일 수 있다. 디스코드는 메시지
+        하나에 임베드를 최대 10개까지만 허용해서, 그보다 많으면 메시지를 나눠 보낸다.
         """
         log_channel_id = verification.get("log_channel_id")
         if not log_channel_id:
@@ -323,17 +349,21 @@ class Verification(commands.Cog):
             color=0x57F287,
             timestamp=discord.utils.utcnow(),
         )
-        log_embed.set_footer(text=f"승인: {admin.display_name}")
+        footer = f"승인: {admin.display_name}"
+        if image_urls:
+            footer += f" · 이미지 {len(image_urls)}장"
+        log_embed.set_footer(text=footer)
 
-        image_urls = [e.image.url for e in submitted_embeds if e.image]
         log_embeds = [log_embed]
         if image_urls:
             log_embed.set_image(url=image_urls[0])
             for extra_url in image_urls[1:]:
                 log_embeds.append(discord.Embed(color=0x57F287).set_image(url=extra_url))
 
+        EMBEDS_PER_MESSAGE = 10  # 디스코드 API 제한
         try:
-            await log_channel.send(embeds=log_embeds)
+            for i in range(0, len(log_embeds), EMBEDS_PER_MESSAGE):
+                await log_channel.send(embeds=log_embeds[i : i + EMBEDS_PER_MESSAGE])
         except discord.HTTPException:
             pass
 
