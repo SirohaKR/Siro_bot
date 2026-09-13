@@ -18,6 +18,7 @@
       "role_id": 333,
       "threads": {"444(유저ID)": 555(스레드ID)}
     },
+    "announcement": {"channel_id": 666, "title": "...", "body": "...", "message_id": 777},
     "rank_role_ids": {"길드마스터": 333, ...},
     "hub_voice_channel_id": 444,
     "temp_voice_channel_ids": [555, 666]

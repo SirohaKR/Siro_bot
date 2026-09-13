@@ -1,0 +1,36 @@
+{% extends "guild_shell.html" %}
+{% block section %}
+<div class="card">
+  <p class="desc" style="margin-bottom:18px;">
+    아래에서 고른 음성채널이 "허브"가 됩니다. 길드원이 그 채널에 들어가면 자기 이름으로 된
+    개인 채널이 자동으로 생기고, 그 채널에서 나가서 비면 자동으로 사라집니다.
+  </p>
+  <form method="post">
+    <label>기존 음성채널을 허브로 사용</label>
+    <select name="existing_channel_id">
+      <option value="">(선택 안 함 — 아래에서 새로 만들기)</option>
+      {% for c in voice_channels %}
+      <option value="{{ c.id }}" {% if settings.hub_voice_channel_id == c.id|int %}selected{% endif %}>{{ c.name }}</option>
+      {% endfor %}
+    </select>
+
+    <div class="row">
+      <div>
+        <label>또는 새 채널 이름 (예: ➕ 파티 모집)</label>
+        <input type="text" name="new_channel_name" placeholder="새로 만들 경우에만 입력">
+      </div>
+      <div>
+        <label>넣을 카테고리 (선택)</label>
+        <select name="parent_id">
+          <option value="">(없음)</option>
+          {% for cat in categories %}
+          <option value="{{ cat.id }}">{{ cat.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+
+    <button type="submit">🔊 허브 채널 설정</button>
+  </form>
+</div>
+{% endblock %}

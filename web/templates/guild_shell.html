@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ page_title }} — 어시스턴트 레일라{% endblock %}
+
+{% block extra_style %}
+.shell { display: flex; min-height: 100vh; align-items: flex-start; }
+.sidebar {
+  width: 230px; flex-shrink: 0; min-height: 100vh;
+  background: var(--panel); border-right: 1px solid var(--card-border);
+  padding: 22px 14px; position: sticky; top: 0;
+}
+.sidebar .brand { padding: 4px 10px 20px; font-size: 16px; }
+.sidebar nav a {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 8px; margin-bottom: 4px;
+  color: var(--muted); text-decoration: none; font-size: 13px; font-weight: 600;
+  border-left: 3px solid transparent;
+}
+.sidebar nav a:hover { background: var(--card); color: var(--text); }
+.sidebar nav a.active {
+  background: var(--card); color: var(--text); border-left-color: var(--accent);
+}
+.sidebar form { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--card-border); }
+.sidebar form button { width: 100%; margin-top: 0; background: var(--card); color: var(--muted); }
+.sidebar form button:hover { background: var(--danger); color: white; }
+.content { flex: 1; min-width: 0; padding: 32px 32px 64px; max-width: 780px; }
+.content > .card { margin-bottom: 20px; }
+.page-title { margin: 0 0 6px; font-size: 22px; }
+.page-desc { margin: 0 0 22px; font-size: 13px; color: var(--muted); }
+.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.status-card {
+  display: block; text-decoration: none; color: inherit;
+  transition: border-color .15s ease;
+}
+.status-card:hover { border-color: var(--accent); }
+.status-line { font-size: 13px; margin: 8px 0 12px; }
+.status-line.ok { color: #57F287; }
+.status-line.warn { color: #E2A93C; }
+.status-card .tag { color: var(--accent); background: transparent; padding: 0; }
+@media (max-width: 900px) {
+  .grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .shell { flex-direction: column; }
+  .sidebar { width: 100%; min-height: auto; position: static; }
+  .content { padding: 20px; }
+}
+{% endblock %}
+
+{% block body %}
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand">🐾 레일라</div>
+    <nav>
+      <a href="{{ url_for('guild_page', guild_id=guild_id) }}" class="{{ 'active' if active == 'dashboard' else '' }}">🏠 대시보드</a>
+      <a href="{{ url_for('guild_entrance', guild_id=guild_id) }}" class="{{ 'active' if active == 'entrance' else '' }}">🚪 입장 안내</a>
+      <a href="{{ url_for('guild_verification', guild_id=guild_id) }}" class="{{ 'active' if active == 'verification' else '' }}">🔑 캐릭터 인증</a>
+      <a href="{{ url_for('guild_announcements', guild_id=guild_id) }}" class="{{ 'active' if active == 'announcements' else '' }}">📢 공지사항 · 규칙</a>
+      <a href="{{ url_for('guild_hub', guild_id=guild_id) }}" class="{{ 'active' if active == 'hub' else '' }}">🔊 파티모집 채널</a>
+      <a href="{{ url_for('guild_ranks', guild_id=guild_id) }}" class="{{ 'active' if active == 'ranks' else '' }}">👑 길드 직급</a>
+      <a href="{{ url_for('guild_members', guild_id=guild_id) }}" class="{{ 'active' if active == 'members' else '' }}">🧑‍🤝‍🧑 멤버 관리</a>
+    </nav>
+    {% if session.get('authed') %}
+    <form method="post" action="{{ url_for('logout') }}">
+      <button type="submit">로그아웃</button>
+    </form>
+    {% endif %}
+  </aside>
+
+  <main class="content">
+    <h1 class="page-title">{{ page_title }}</h1>
+    {% if page_desc %}<p class="page-desc">{{ page_desc }}</p>{% endif %}
+    {% block section %}{% endblock %}
+  </main>
+</div>
+{% endblock %}
