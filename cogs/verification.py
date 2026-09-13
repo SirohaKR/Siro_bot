@@ -175,16 +175,24 @@ class Verification(commands.Cog):
         if threads_map.get(str(message.author.id)) != message.channel.id:
             return  # 이 사람이 인증용으로 만든 스레드가 아니면 무시.
 
-        image = next((a for a in message.attachments if _is_image_attachment(a)), None)
-        if image is None:
+        # 한 메시지에 이미지를 여러 장 첨부했을 수 있으니, 첫 장만 고르지 않고 전부 모은다.
+        images = [a for a in message.attachments if _is_image_attachment(a)]
+        if not images:
             return
 
-        embed = discord.Embed(
-            title=f"📥 {message.author.display_name}님의 인증 이미지",
-            description="관리자님, 확인 후 아래 버튼으로 승인/거절해주세요.",
-            color=0x5B8CFF,
-        )
-        embed.set_image(url=image.url)
+        count_note = f" (이미지 {len(images)}장)" if len(images) > 1 else ""
+        embeds = [
+            discord.Embed(
+                title=f"📥 {message.author.display_name}님의 인증 이미지{count_note}",
+                description="관리자님, 확인 후 아래 버튼으로 승인/거절해주세요.",
+                color=0x5B8CFF,
+            )
+        ]
+        embeds[0].set_image(url=images[0].url)
+        # 임베드 하나에는 이미지를 하나만 넣을 수 있어서, 두 번째 장부터는 이미지만 있는
+        # 임베드를 추가로 붙인다 (디스코드는 메시지 하나에 임베드를 최대 10개까지 허용).
+        for extra in images[1:]:
+            embeds.append(discord.Embed(color=0x5B8CFF).set_image(url=extra.url))
 
         view = discord.ui.View(timeout=None)
         view.add_item(
@@ -199,7 +207,7 @@ class Verification(commands.Cog):
                 custom_id=f"{VERIFY_REJECT_PREFIX}{message.author.id}",
             )
         )
-        await message.channel.send(embed=embed, view=view)
+        await message.channel.send(embeds=embeds, view=view)
 
     # ------------------------------------------------------------------
     # 3) 버튼 클릭 처리 (컴포넌트 인터랙션은 View 콜백이 아니라 여기서 전부 해석한다)
@@ -230,7 +238,8 @@ class Verification(commands.Cog):
             return
 
         thread = interaction.channel
-        original_embed = interaction.message.embeds[0] if interaction.message.embeds else discord.Embed()
+        # 이미지가 여러 장이면 확인 카드에 임베드가 여러 개 붙어있으니, 전부 가져온다.
+        original_embeds = interaction.message.embeds or [discord.Embed()]
 
         if approve:
             settings = get_guild_settings(guild.id)
@@ -262,10 +271,11 @@ class Verification(commands.Cog):
                 await interaction.followup.send(f"⚠️ 역할 부여 중 오류가 났어요: {e}", ephemeral=True)
                 return
 
-            resolved_embed = original_embed.copy()
-            resolved_embed.color = 0x57F287
-            resolved_embed.set_footer(text=f"✅ {admin.display_name}님이 승인함")
-            await interaction.edit_original_response(embed=resolved_embed, view=None)
+            resolved_embeds = [e.copy() for e in original_embeds]
+            for e in resolved_embeds:
+                e.color = 0x57F287
+            resolved_embeds[0].set_footer(text=f"✅ {admin.display_name}님이 승인함")
+            await interaction.edit_original_response(embeds=resolved_embeds, view=None)
 
             if isinstance(thread, discord.Thread):
                 await thread.send(f"🎉 {member.mention}님의 인증이 승인되어 역할이 부여됐어요!")
@@ -274,14 +284,15 @@ class Verification(commands.Cog):
                 except discord.HTTPException:
                     pass
 
-            await self._log_verification(guild, verification, member, role, admin, original_embed)
+            await self._log_verification(guild, verification, member, role, admin, original_embeds)
         else:
             await interaction.response.defer()
 
-            resolved_embed = original_embed.copy()
-            resolved_embed.color = 0xE2574C
-            resolved_embed.set_footer(text=f"❌ {admin.display_name}님이 거절함")
-            await interaction.edit_original_response(embed=resolved_embed, view=None)
+            resolved_embeds = [e.copy() for e in original_embeds]
+            for e in resolved_embeds:
+                e.color = 0xE2574C
+            resolved_embeds[0].set_footer(text=f"❌ {admin.display_name}님이 거절함")
+            await interaction.edit_original_response(embeds=resolved_embeds, view=None)
 
             if isinstance(thread, discord.Thread):
                 await thread.send(f"❌ 인증 이미지가 거절됐어요. <@{target_id}>님, 다른 이미지로 다시 업로드해주세요.")
@@ -293,9 +304,12 @@ class Verification(commands.Cog):
         member: discord.Member,
         role: discord.Role,
         admin: discord.Member,
-        submitted_embed: discord.Embed,
+        submitted_embeds: list[discord.Embed],
     ) -> None:
-        """웹 설정에서 '인증 로그 채널'을 지정해뒀으면, 승인된 인증 내역을 거기 정리해서 남긴다."""
+        """웹 설정에서 '인증 로그 채널'을 지정해뒀으면, 승인된 인증 내역을 거기 정리해서 남긴다.
+
+        인증 이미지가 여러 장이었으면(임베드가 여러 개), 첫 장만이 아니라 전부 남긴다.
+        """
         log_channel_id = verification.get("log_channel_id")
         if not log_channel_id:
             return
@@ -309,12 +323,17 @@ class Verification(commands.Cog):
             color=0x57F287,
             timestamp=discord.utils.utcnow(),
         )
-        if submitted_embed.image:
-            log_embed.set_image(url=submitted_embed.image.url)
         log_embed.set_footer(text=f"승인: {admin.display_name}")
 
+        image_urls = [e.image.url for e in submitted_embeds if e.image]
+        log_embeds = [log_embed]
+        if image_urls:
+            log_embed.set_image(url=image_urls[0])
+            for extra_url in image_urls[1:]:
+                log_embeds.append(discord.Embed(color=0x57F287).set_image(url=extra_url))
+
         try:
-            await log_channel.send(embed=log_embed)
+            await log_channel.send(embeds=log_embeds)
         except discord.HTTPException:
             pass
 
