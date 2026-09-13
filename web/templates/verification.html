@@ -33,6 +33,16 @@
         </select>
       </div>
     </div>
+
+    <label>인증 로그 채널 (선택)</label>
+    <select name="log_channel_id">
+      <option value="">(사용 안 함)</option>
+      {% for c in text_channels %}
+      <option value="{{ c.id }}" {% if verification.log_channel_id == c.id|int %}selected{% endif %}>#{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <p class="desc" style="margin-top:6px;">고르면 승인될 때마다 누가 언제 인증됐는지 이 채널에 자동으로 정리해서 남겨요.</p>
+
     <button type="submit">💾 캐릭터 인증 설정 저장</button>
   </form>
 </div>

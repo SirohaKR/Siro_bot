@@ -273,6 +273,8 @@ class Verification(commands.Cog):
                     await thread.edit(archived=True, locked=True)
                 except discord.HTTPException:
                     pass
+
+            await self._log_verification(guild, verification, member, role, admin, original_embed)
         else:
             await interaction.response.defer()
 
@@ -283,6 +285,38 @@ class Verification(commands.Cog):
 
             if isinstance(thread, discord.Thread):
                 await thread.send(f"❌ 인증 이미지가 거절됐어요. <@{target_id}>님, 다른 이미지로 다시 업로드해주세요.")
+
+    async def _log_verification(
+        self,
+        guild: discord.Guild,
+        verification: dict,
+        member: discord.Member,
+        role: discord.Role,
+        admin: discord.Member,
+        submitted_embed: discord.Embed,
+    ) -> None:
+        """웹 설정에서 '인증 로그 채널'을 지정해뒀으면, 승인된 인증 내역을 거기 정리해서 남긴다."""
+        log_channel_id = verification.get("log_channel_id")
+        if not log_channel_id:
+            return
+        log_channel = guild.get_channel(log_channel_id)
+        if not isinstance(log_channel, discord.TextChannel):
+            return
+
+        log_embed = discord.Embed(
+            title="✅ 캐릭터 인증 완료",
+            description=f"{member.mention}님이 인증되어 {role.mention} 역할이 부여됐어요.",
+            color=0x57F287,
+            timestamp=discord.utils.utcnow(),
+        )
+        if submitted_embed.image:
+            log_embed.set_image(url=submitted_embed.image.url)
+        log_embed.set_footer(text=f"승인: {admin.display_name}")
+
+        try:
+            await log_channel.send(embed=log_embed)
+        except discord.HTTPException:
+            pass
 
 
 async def setup(bot: commands.Bot):

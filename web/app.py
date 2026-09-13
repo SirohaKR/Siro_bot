@@ -203,6 +203,7 @@ def guild_verification(guild_id):
         role_id = int(request.form["role_id"])
         title = (request.form.get("title") or "").strip() or "캐릭터 인증"
         body = (request.form.get("body") or "").strip()
+        log_channel_id = request.form.get("log_channel_id")
 
         settings = settings_store.get_guild_settings(guild_id)
         existing_threads = (settings.get("verification") or {}).get("threads", {})
@@ -215,6 +216,7 @@ def guild_verification(guild_id):
                 "title": title,
                 "body": body,
                 "threads": existing_threads,
+                "log_channel_id": int(log_channel_id) if log_channel_id else None,
             },
         )
         return redirect(url_for("guild_verification", guild_id=guild_id))

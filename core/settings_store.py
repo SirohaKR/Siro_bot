@@ -16,6 +16,7 @@
       "title": "...",
       "body": "...",
       "role_id": 333,
+      "log_channel_id": 999,
       "threads": {"444(유저ID)": 555(스레드ID)}
     },
     "announcement": {"channel_id": 666, "title": "...", "body": "...", "message_id": 777},
