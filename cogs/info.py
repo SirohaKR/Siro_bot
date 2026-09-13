@@ -31,7 +31,7 @@ class Info(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(name="설정", description="[서버 소유자 전용] 시로냥 웹 설정 페이지 주소를 알려줍니다.")
+    @app_commands.command(name="설정", description="[서버 소유자 전용] 레일라 관리 페이지 주소를 알려줍니다.")
     @is_guild_owner()
     async def settings_url(self, interaction: discord.Interaction):
         base_url = os.getenv("WEB_PUBLIC_URL")
@@ -44,7 +44,7 @@ class Info(commands.Cog):
             return
 
         await interaction.response.send_message(
-            f"🔧 시로냥 설정 페이지\n{base_url.rstrip('/')}/\n비밀번호를 입력하면 들어갑니다. (다른 사람에게 공유하지 마세요)",
+            f"🔧 레일라 관리 페이지\n{base_url.rstrip('/')}/\n비밀번호를 입력하면 들어갑니다. (다른 사람에게 공유하지 마세요)",
             ephemeral=True,
         )
 
