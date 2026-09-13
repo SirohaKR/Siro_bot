@@ -13,7 +13,7 @@
          value="{{ announcement_draft.title or '' }}">
 
   <label>공지 내용</label>
-  <textarea id="ann-body" rows="4" placeholder="예: 본인의 직업에 맞는 이모티콘을 눌러주세요!">{{ announcement_draft.body or '' }}</textarea>
+  <textarea id="ann-body" rows="10" placeholder="예: 본인의 직업에 맞는 이모티콘을 눌러주세요!">{{ announcement_draft.body or '' }}</textarea>
 
   <table style="margin-top:18px;">
     {% for job in job_list %}

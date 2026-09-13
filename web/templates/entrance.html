@@ -12,7 +12,7 @@
     <input type="text" name="title" placeholder="예: 👋 환영합니다!" value="{{ entrance.title or '' }}">
 
     <label>안내 내용</label>
-    <textarea name="body" rows="4" placeholder="예: 아래 버튼을 눌러 캐릭터 인증을 진행해주세요.">{{ entrance.body or '' }}</textarea>
+    <textarea name="body" rows="10" placeholder="예: 아래 버튼을 눌러 캐릭터 인증을 진행해주세요.">{{ entrance.body or '' }}</textarea>
 
     <label>이미지 첨부 (선택)</label>
     <input type="file" name="image_file" accept="image/*">

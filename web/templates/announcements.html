@@ -12,7 +12,7 @@
     <input type="text" name="title" placeholder="예: 📜 길드 규칙" value="{{ announcement.title or '' }}">
 
     <label>공지 내용</label>
-    <textarea name="body" rows="6" placeholder="예: 1. 길드원 간 예의를 지켜주세요...">{{ announcement.body or '' }}</textarea>
+    <textarea name="body" rows="14" placeholder="예: 1. 길드원 간 예의를 지켜주세요...">{{ announcement.body or '' }}</textarea>
 
     <label>이미지 첨부 (선택)</label>
     <input type="file" name="image_file" accept="image/*">
