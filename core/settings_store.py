@@ -10,7 +10,14 @@
 저장되는 값 예시 (서버 ID마다 하나씩):
 {
   "123456789012345678": {
-    "job_role_ids": {"전사": 111, "마법사": 222, ...},
+    "entrance": {"channel_id": 111, "title": "...", "body": "...", "message_id": 999},
+    "verification": {
+      "channel_id": 222,
+      "title": "...",
+      "body": "...",
+      "role_id": 333,
+      "threads": {"444(유저ID)": 555(스레드ID)}
+    },
     "rank_role_ids": {"길드마스터": 333, ...},
     "hub_voice_channel_id": 444,
     "temp_voice_channel_ids": [555, 666]

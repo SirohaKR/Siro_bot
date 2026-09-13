@@ -5,13 +5,18 @@
 봇 프로세스(main.py)와는 별개로 켜서 브라우저로 접속해 쓰는 "관리자 설정 페이지"다.
 채널/역할을 고르고 버튼을 누르면 여기서 디스코드 REST API(core/discord_api.py)를
 직접 호출해서:
-  - 공지 채널에 "직업 선택" 메시지를 올리고 이모티콘을 붙이거나
+  - 입장안내 채널에 "캐릭터 인증하러 가기" 버튼이 달린 안내 메시지를 올리거나
   - 새 음성채널(파티모집 허브)을 만들거나
   - 멤버에게 길드 직급 역할을 부여한다.
 
+버튼을 눌렀을 때 비공개 인증 스레드를 만들고, 관리자가 승인/거절해서 실제로 역할을
+부여하는 것은 여기(REST API)가 아니라 실시간 연결이 필요한 main.py(cogs/verification.py)가
+담당한다.
+
 그렇게 정해진 설정(어떤 메시지/채널/역할을 쓰는지)은 core/settings_store.py를 통해
 data/settings.json에 저장된다. 실행 중인 봇(main.py)이 그 값을 계속 읽어서 실제 동작
-(이모지 반응 감지 -> 역할 부여, 허브 채널 입장 -> 개인 채널 생성)을 수행한다.
+(버튼 클릭 -> 인증 스레드 생성 -> 관리자 승인 -> 역할 부여, 허브 채널 입장 -> 개인 채널 생성)을
+수행한다.
 
 인증은 로그인 페이지(비밀번호 입력) 방식이다. 주소 자체에는 비밀 값이 없고,
 처음 접속하면 /login으로 보내져서 WEB_ADMIN_TOKEN 값을 비밀번호로 입력해야 들어갈 수
@@ -114,23 +119,11 @@ def _load_guild_context(guild_id: int) -> dict:
         "roles_by_id": roles_by_id,
         "members": sorted(members, key=lambda m: m["name"].lower()),
         "settings": settings,
-        "job_list": settings.get("job_list", []),
-        "announcement_draft": settings.get("announcement_draft", {}),
+        "entrance": settings.get("entrance", {}),
+        "verification": settings.get("verification", {}),
         "guild_ranks": GUILD_RANKS,
         "rank_role_ids": rank_role_ids,
     }
-
-
-def _save_announcement_draft(guild_id: int) -> None:
-    """공지 제목/본문 입력값을 저장해둔다. (이미지는 파일 첨부라 새로고침 후 되살릴 수
-    없으므로 드래프트로 관리하지 않고, 게시할 때만 그 자리에서 첨부받는다)
-
-    "목록에 추가"/"삭제"를 누를 때마다 페이지가 새로고침되는데, 그때 지금까지
-    입력해둔 공지 내용이 날아가지 않도록 매번 같이 저장해서 다시 채워 넣는다.
-    """
-    title = (request.form.get("title") or "").strip()
-    body = (request.form.get("body") or "").strip()
-    settings_store.update_guild_settings(guild_id, announcement_draft={"title": title, "body": body})
 
 
 @app.route("/guild/<int:guild_id>")
@@ -138,93 +131,81 @@ def guild_page(guild_id):
     return render_template("settings.html", **_load_guild_context(guild_id))
 
 
-@app.route("/guild/<int:guild_id>/jobs/add", methods=["POST"])
-def add_job(guild_id):
-    """직업 목록에 한 줄 추가한다 (직업 이름 + 이모지 + 역할). 개수 제한 없음."""
-    _save_announcement_draft(guild_id)
+@app.route("/guild/<int:guild_id>/entrance", methods=["POST"])
+def post_entrance(guild_id):
+    """입장안내 채널에 "캐릭터 인증하러 가기" 버튼이 달린 안내 메시지를 올린다.
 
-    label = (request.form.get("label") or "").strip()
-    emoji = (request.form.get("emoji") or "").strip()
-    role_id = request.form.get("role_id")
-
-    if label and emoji and role_id:
-        settings = settings_store.get_guild_settings(guild_id)
-        job_list = settings.get("job_list", [])
-        job_list.append({"label": label, "emoji": emoji, "role_id": int(role_id)})
-        settings_store.update_guild_settings(guild_id, job_list=job_list)
-
-    return redirect(url_for("guild_page", guild_id=guild_id) + "#jobs")
-
-
-@app.route("/guild/<int:guild_id>/jobs/delete", methods=["POST"])
-def delete_job(guild_id):
-    """직업 목록에서 한 줄을 뺀다."""
-    _save_announcement_draft(guild_id)
-
-    index = request.form.get("index", type=int)
-    settings = settings_store.get_guild_settings(guild_id)
-    job_list = settings.get("job_list", [])
-
-    if index is not None and 0 <= index < len(job_list):
-        job_list.pop(index)
-        settings_store.update_guild_settings(guild_id, job_list=job_list)
-
-    return redirect(url_for("guild_page", guild_id=guild_id) + "#jobs")
-
-
-@app.route("/guild/<int:guild_id>/job-roles", methods=["POST"])
-def post_job_roles(guild_id):
-    """직접 쓴 공지 제목/본문/이미지 + 지금까지 추가해둔 직업 목록으로 실제 공지
-    메시지를 올리고, 그 밑에 이모지를 붙인다."""
+    이 버튼 자체는 REST API로 바로 만들 수 있지만, 눌렸을 때 비공개 인증 스레드를
+    만드는 실제 동작은 실시간으로 켜져 있는 main.py(cogs/verification.py)가 처리한다.
+    """
     channel_id = int(request.form["channel_id"])
-    title = (request.form.get("title") or "").strip() or "공지"
+    title = (request.form.get("title") or "").strip() or "입장 안내"
     body = (request.form.get("body") or "").strip()
     image_url = (request.form.get("image_url") or "").strip()
     image_file = request.files.get("image_file")
-    _save_announcement_draft(guild_id)
 
-    settings = settings_store.get_guild_settings(guild_id)
-    job_list = settings.get("job_list", [])
-
-    if not job_list:
-        return redirect(url_for("guild_page", guild_id=guild_id) + "#jobs")
-
-    emoji_to_role = {}
-    lines = []
-    for job in job_list:
-        emoji_to_role[job["emoji"]] = {"role_id": job["role_id"], "label": job["label"]}
-        lines.append(f"{job['emoji']}  {job['label']}")
-
-    # 관리자가 직접 쓴 공지 내용 밑에, 어떤 이모지가 어떤 역할인지 목록을 이어 붙인다.
-    description = body
-    if lines:
-        description += ("\n\n" if description else "") + "\n".join(lines)
-
-    embed = {"title": title, "description": description, "color": 0x57F287}
+    embed = {"title": title, "description": body, "color": 0x5B8CFF}
+    components = [
+        {
+            "type": 1,
+            "components": [
+                {
+                    "type": 2,
+                    "style": 1,
+                    "label": "🔑 캐릭터 인증하러 가기",
+                    "custom_id": "siro:verify_start",
+                }
+            ],
+        }
+    ]
 
     if image_file and image_file.filename:
-        # 파일을 첨부해서 보낸다 (어딘가에 미리 업로드해서 URL을 만들 필요가 없다).
         filename = image_file.filename
         embed["image"] = {"url": f"attachment://{filename}"}
-        message = discord_api.send_message_with_file(channel_id, embed, filename, image_file.read())
+        message = discord_api.send_message_with_file(channel_id, embed, filename, image_file.read(), components)
     else:
         if image_url:
             embed["image"] = {"url": image_url}
-        message = discord_api.send_message(channel_id, embed)
-
-    for emoji in emoji_to_role:
-        discord_api.add_reaction(channel_id, message["id"], emoji)
+        message = discord_api.send_message(channel_id, embed, components)
 
     settings_store.update_guild_settings(
         guild_id,
-        announcement_channel_id=channel_id,
-        job_roles={
-            "message_id": int(message["id"]),
+        entrance={
             "channel_id": channel_id,
-            "emoji_to_role": emoji_to_role,
+            "title": title,
+            "body": body,
+            "message_id": int(message["id"]),
         },
     )
-    return redirect(url_for("guild_page", guild_id=guild_id) + "#jobs")
+    return redirect(url_for("guild_page", guild_id=guild_id) + "#entrance")
+
+
+@app.route("/guild/<int:guild_id>/verification", methods=["POST"])
+def post_verification(guild_id):
+    """캐릭터 인증 안내 문구 + 인증 스레드를 만들 채널 + 승인 시 부여할 역할을 저장한다.
+
+    여기서 저장한 값은 바로 채널에 게시되는 게 아니라, 멤버가 입장안내의 버튼을 눌러
+    비공개 인증 스레드가 만들어질 때마다 그 스레드 안에 안내 문구로 쓰인다.
+    """
+    channel_id = int(request.form["channel_id"])
+    role_id = int(request.form["role_id"])
+    title = (request.form.get("title") or "").strip() or "캐릭터 인증"
+    body = (request.form.get("body") or "").strip()
+
+    settings = settings_store.get_guild_settings(guild_id)
+    existing_threads = (settings.get("verification") or {}).get("threads", {})
+
+    settings_store.update_guild_settings(
+        guild_id,
+        verification={
+            "channel_id": channel_id,
+            "role_id": role_id,
+            "title": title,
+            "body": body,
+            "threads": existing_threads,
+        },
+    )
+    return redirect(url_for("guild_page", guild_id=guild_id) + "#verification")
 
 
 @app.route("/guild/<int:guild_id>/rank-roles", methods=["POST"])

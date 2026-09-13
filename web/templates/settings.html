@@ -33,7 +33,8 @@
   <aside class="sidebar">
     <div class="brand">🐾 시로냥</div>
     <nav>
-      <a href="#jobs">🎭 직업 역할</a>
+      <a href="#entrance">🚪 입장 안내</a>
+      <a href="#verification">🔑 캐릭터 인증</a>
       <a href="#hub">🔊 파티모집 채널</a>
       <a href="#ranks">👑 길드 직급</a>
       <a href="#assign">🧑‍🤝‍🧑 멤버 관리</a>
@@ -48,70 +49,23 @@
   <main class="content">
     <h1 class="page-title">서버 설정</h1>
 
-    <div class="card" id="jobs">
+    <div class="card" id="entrance">
       <div class="card-title">
-        <div class="card-icon">🎭</div>
-        <h2>직업 선택 공지 만들기</h2>
+        <div class="card-icon">🚪</div>
+        <h2>입장 안내 만들기</h2>
       </div>
       <p class="desc">
-        먼저 공지로 올라갈 제목/내용/이미지를 직접 써주세요. 그 아래에서 이모티콘과
-        역할을 원하는 만큼 추가/삭제하면, 게시할 때 공지 내용 밑에 그 목록이 자동으로
-        붙습니다. 길드원이 이모티콘을 누르면 역할이 붙고, 다른 이모티콘을 누르면 이전
-        것으로 자동 교체됩니다.
+        여기서 쓴 제목/내용/이미지로 안내 메시지를 올리면, 그 밑에 "🔑 캐릭터 인증하러
+        가기" 버튼이 자동으로 붙습니다. 길드원이 그 버튼을 누르면 본인만 볼 수 있는
+        비공개 채널이 만들어지고, 아래 "캐릭터 인증" 섹션에서 쓴 안내가 그 안에 표시됩니다.
       </p>
 
-      <label>공지 제목</label>
-      <input type="text" id="ann-title" placeholder="예: 🍁 직업을 선택해주세요"
-             value="{{ announcement_draft.title or '' }}">
+      <form method="post" action="{{ url_for('post_entrance', guild_id=guild_id) }}" enctype="multipart/form-data">
+        <label>안내 제목</label>
+        <input type="text" name="title" placeholder="예: 👋 환영합니다!" value="{{ entrance.title or '' }}">
 
-      <label>공지 내용</label>
-      <textarea id="ann-body" rows="4" placeholder="예: 본인의 직업에 맞는 이모티콘을 눌러주세요!">{{ announcement_draft.body or '' }}</textarea>
-
-      <table style="margin-top:18px;">
-        {% for job in job_list %}
-        <tr>
-          <td style="width:36px;font-size:18px;">{{ job.emoji }}</td>
-          <td>{{ job.label }}</td>
-          <td class="tag">{{ roles_by_id.get(job.role_id, '(삭제된 역할)') }}</td>
-          <td style="width:70px;">
-            <form method="post" action="{{ url_for('delete_job', guild_id=guild_id) }}" class="ann-carry">
-              <input type="hidden" name="index" value="{{ loop.index0 }}">
-              <input type="hidden" name="title"><input type="hidden" name="body">
-              <button type="submit" style="margin:0;background:var(--danger);padding:4px 10px;font-size:12px;">삭제</button>
-            </form>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="4" class="tag">아직 추가된 직업이 없습니다. 아래에서 하나씩 추가해주세요.</td></tr>
-        {% endfor %}
-      </table>
-
-      <form method="post" action="{{ url_for('add_job', guild_id=guild_id) }}" class="ann-carry" style="margin-top:14px;">
-        <input type="hidden" name="title"><input type="hidden" name="body">
-        <div class="row">
-          <div>
-            <label>직업 이름</label>
-            <input type="text" name="label" placeholder="예: 히어로" required>
-          </div>
-          <div>
-            <label>이모티콘</label>
-            <input type="text" name="emoji" placeholder="예: 🦸" required>
-          </div>
-          <div>
-            <label>역할</label>
-            <select name="role_id" required>
-              {% for r in roles %}
-              <option value="{{ r.id }}">{{ r.name }}</option>
-              {% endfor %}
-            </select>
-          </div>
-        </div>
-        <button type="submit">➕ 목록에 추가</button>
-      </form>
-
-      <form method="post" action="{{ url_for('post_job_roles', guild_id=guild_id) }}" class="ann-carry"
-            enctype="multipart/form-data" style="margin-top:18px;border-top:1px solid var(--card-border);padding-top:14px;">
-        <input type="hidden" name="title"><input type="hidden" name="body">
+        <label>안내 내용</label>
+        <textarea name="body" rows="4" placeholder="예: 아래 버튼을 눌러 캐릭터 인증을 진행해주세요.">{{ entrance.body or '' }}</textarea>
 
         <label>이미지 첨부 (선택)</label>
         <input type="file" name="image_file" accept="image/*">
@@ -119,28 +73,55 @@
         <label>또는 이미지 URL (선택 — 파일을 첨부하면 이 값은 무시됩니다)</label>
         <input type="text" name="image_url" placeholder="https://...">
 
-        <label>공지를 올릴 채널</label>
+        <label>안내를 올릴 채널</label>
         <select name="channel_id" required>
           {% for c in text_channels %}
-          <option value="{{ c.id }}" {% if settings.announcement_channel_id == c.id|int %}selected{% endif %}>#{{ c.name }}</option>
+          <option value="{{ c.id }}" {% if entrance.channel_id == c.id|int %}selected{% endif %}>#{{ c.name }}</option>
           {% endfor %}
         </select>
-        <button type="submit" {% if not job_list %}disabled{% endif %}>📢 공지 게시하기</button>
+        <button type="submit">📢 입장 안내 게시하기</button>
       </form>
     </div>
 
-    <script>
-      // "목록에 추가"/"삭제"/"게시하기" 버튼 중 뭘 눌러도, 방금 위에서 쓴 공지
-      // 제목/내용이 그대로 그 요청에 실려가게 전송 직전에 값을 채워 넣는다.
-      // (페이지가 새로고침돼도 서버가 값을 기억했다가 다시 보여주도록. 이미지는
-      // 파일 첨부라서 새로고침 후엔 되살릴 수 없으니 여기서 다루지 않는다)
-      document.querySelectorAll("form.ann-carry").forEach(function (form) {
-        form.addEventListener("submit", function () {
-          form.querySelector('[name="title"]').value = document.getElementById("ann-title").value;
-          form.querySelector('[name="body"]').value = document.getElementById("ann-body").value;
-        });
-      });
-    </script>
+    <div class="card" id="verification">
+      <div class="card-title">
+        <div class="card-icon">🔑</div>
+        <h2>캐릭터 인증 설정</h2>
+      </div>
+      <p class="desc">
+        길드원이 위 버튼을 눌러 만들어진 비공개 채널에 표시될 안내 문구입니다. 길드원이
+        그 채널에 인증용 이미지를 올리면 "✅ 승인 / ❌ 거절" 버튼이 달린 카드가 뜨고,
+        '역할 관리' 권한이 있는 관리자가 승인을 누르면 아래에서 고른 역할이 자동으로 부여됩니다.
+      </p>
+
+      <form method="post" action="{{ url_for('post_verification', guild_id=guild_id) }}">
+        <label>인증 안내 제목</label>
+        <input type="text" name="title" placeholder="예: 🔑 캐릭터 인증" value="{{ verification.title or '' }}">
+
+        <label>인증 안내 내용</label>
+        <textarea name="body" rows="4" placeholder="예: 본인 캐릭터가 보이는 스크린샷을 이 채널에 올려주세요.">{{ verification.body or '' }}</textarea>
+
+        <div class="row">
+          <div>
+            <label>인증 채널 (비공개 스레드가 여기에 만들어집니다)</label>
+            <select name="channel_id" required>
+              {% for c in text_channels %}
+              <option value="{{ c.id }}" {% if verification.channel_id == c.id|int %}selected{% endif %}>#{{ c.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label>승인 시 부여할 역할</label>
+            <select name="role_id" required>
+              {% for r in roles %}
+              <option value="{{ r.id }}" {% if verification.role_id == r.id|int %}selected{% endif %}>{{ r.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <button type="submit">💾 캐릭터 인증 설정 저장</button>
+      </form>
+    </div>
 
     <div class="card" id="hub">
       <div class="card-title">
