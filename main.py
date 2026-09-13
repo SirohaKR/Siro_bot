@@ -22,6 +22,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 # 새 기능(cog)을 추가할 때는 여기에 모듈 경로만 한 줄 추가하면 된다.
 INITIAL_EXTENSIONS = [
     "cogs.verification",  # 입장안내 버튼 -> 캐릭터 인증 스레드 -> 관리자 승인/거절
+    "cogs.roles",  # 채팅채널에 올린 공지 + 이모지 반응으로 직업 등 역할 셀프 선택
     "cogs.channels",
     "cogs.info",  # "/설정" 명령어 — 웹 설정 페이지 주소를 알려줌
 ]

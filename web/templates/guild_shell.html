@@ -54,6 +54,7 @@
       <a href="{{ url_for('guild_page', guild_id=guild_id) }}" class="{{ 'active' if active == 'dashboard' else '' }}">🏠 대시보드</a>
       <a href="{{ url_for('guild_entrance', guild_id=guild_id) }}" class="{{ 'active' if active == 'entrance' else '' }}">🚪 입장 안내</a>
       <a href="{{ url_for('guild_verification', guild_id=guild_id) }}" class="{{ 'active' if active == 'verification' else '' }}">🔑 캐릭터 인증</a>
+      <a href="{{ url_for('guild_jobs', guild_id=guild_id) }}" class="{{ 'active' if active == 'jobs' else '' }}">🎭 직업 선택</a>
       <a href="{{ url_for('guild_announcements', guild_id=guild_id) }}" class="{{ 'active' if active == 'announcements' else '' }}">📢 공지사항 · 규칙</a>
       <a href="{{ url_for('guild_hub', guild_id=guild_id) }}" class="{{ 'active' if active == 'hub' else '' }}">🔊 파티모집 채널</a>
       <a href="{{ url_for('guild_ranks', guild_id=guild_id) }}" class="{{ 'active' if active == 'ranks' else '' }}">👑 길드 직급</a>

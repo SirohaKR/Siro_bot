@@ -149,6 +149,7 @@ def guild_page(guild_id):
         entrance=settings.get("entrance", {}),
         verification=settings.get("verification", {}),
         announcement=settings.get("announcement", {}),
+        job_list=settings.get("job_list", []),
         rank_role_ids=settings.get("rank_role_ids", {}),
         guild_ranks=GUILD_RANKS,
         channels_by_id=channels_by_id,
@@ -261,6 +262,121 @@ def guild_announcements(guild_id):
         text_channels=_channels(guild_id)["text_channels"],
         announcement=announcement,
     )
+
+
+def _save_job_draft(guild_id: int) -> None:
+    """공지 제목/본문 입력값을 저장해둔다. (이미지는 파일 첨부라 새로고침 후 되살릴 수
+    없으므로 드래프트로 관리하지 않고, 게시할 때만 그 자리에서 첨부받는다)
+
+    "목록에 추가"/"삭제"를 누를 때마다 페이지가 새로고침되는데, 그때 지금까지
+    입력해둔 공지 내용이 날아가지 않도록 매번 같이 저장해서 다시 채워 넣는다.
+    """
+    title = (request.form.get("title") or "").strip()
+    body = (request.form.get("body") or "").strip()
+    settings_store.update_guild_settings(guild_id, job_announcement_draft={"title": title, "body": body})
+
+
+@app.route("/guild/<int:guild_id>/jobs")
+def guild_jobs(guild_id):
+    """채팅채널에 공지를 올리고 이모지 반응으로 역할을 셀프 선택하게 하는 페이지.
+
+    캐릭터 인증(관리자 승인이 필요한 방식)과는 별개로, 직업처럼 "여러 개 중 하나를
+    본인이 바로 고르면 되는" 역할에 쓰는 셀프 선택형 기능이다. 실제 반응 감지/역할
+    부여는 cogs/roles.py가 담당한다.
+    """
+    settings = settings_store.get_guild_settings(guild_id)
+    roles, roles_by_id = _roles(guild_id)
+    return render_template(
+        "jobs.html",
+        guild_id=guild_id,
+        active="jobs",
+        page_title="🎭 직업 선택 (이모지 역할)",
+        page_desc="채팅 채널에 공지를 올리고, 길드원이 이모티콘을 눌러 직업 역할을 스스로 고르게 해요.",
+        text_channels=_channels(guild_id)["text_channels"],
+        roles=roles,
+        roles_by_id=roles_by_id,
+        job_list=settings.get("job_list", []),
+        announcement_draft=settings.get("job_announcement_draft", {}),
+        settings=settings,
+    )
+
+
+@app.route("/guild/<int:guild_id>/jobs/add", methods=["POST"])
+def add_job(guild_id):
+    """직업 목록에 한 줄 추가한다 (직업 이름 + 이모지 + 역할). 개수 제한 없음."""
+    _save_job_draft(guild_id)
+
+    label = (request.form.get("label") or "").strip()
+    emoji = (request.form.get("emoji") or "").strip()
+    role_id = request.form.get("role_id")
+
+    if label and emoji and role_id:
+        settings = settings_store.get_guild_settings(guild_id)
+        job_list = settings.get("job_list", [])
+        job_list.append({"label": label, "emoji": emoji, "role_id": int(role_id)})
+        settings_store.update_guild_settings(guild_id, job_list=job_list)
+
+    return redirect(url_for("guild_jobs", guild_id=guild_id))
+
+
+@app.route("/guild/<int:guild_id>/jobs/delete", methods=["POST"])
+def delete_job(guild_id):
+    """직업 목록에서 한 줄을 뺀다."""
+    _save_job_draft(guild_id)
+
+    index = request.form.get("index", type=int)
+    settings = settings_store.get_guild_settings(guild_id)
+    job_list = settings.get("job_list", [])
+
+    if index is not None and 0 <= index < len(job_list):
+        job_list.pop(index)
+        settings_store.update_guild_settings(guild_id, job_list=job_list)
+
+    return redirect(url_for("guild_jobs", guild_id=guild_id))
+
+
+@app.route("/guild/<int:guild_id>/jobs/post", methods=["POST"])
+def post_job_roles(guild_id):
+    """직접 쓴 공지 제목/본문/이미지 + 지금까지 추가해둔 직업 목록으로 실제 공지
+    메시지를 올리고, 그 밑에 이모지를 붙인다."""
+    channel_id = int(request.form["channel_id"])
+    title = (request.form.get("title") or "").strip() or "공지"
+    body = (request.form.get("body") or "").strip()
+    image_url = (request.form.get("image_url") or "").strip()
+    image_file = request.files.get("image_file")
+    _save_job_draft(guild_id)
+
+    settings = settings_store.get_guild_settings(guild_id)
+    job_list = settings.get("job_list", [])
+
+    if not job_list:
+        return redirect(url_for("guild_jobs", guild_id=guild_id))
+
+    emoji_to_role = {}
+    lines = []
+    for job in job_list:
+        emoji_to_role[job["emoji"]] = {"role_id": job["role_id"], "label": job["label"]}
+        lines.append(f"{job['emoji']}  {job['label']}")
+
+    # 관리자가 직접 쓴 공지 내용 밑에, 어떤 이모지가 어떤 역할인지 목록을 이어 붙인다.
+    description = body
+    if lines:
+        description += ("\n\n" if description else "") + "\n".join(lines)
+
+    message = _post_embed(channel_id, title, description, image_url, image_file)
+
+    for emoji in emoji_to_role:
+        discord_api.add_reaction(channel_id, message["id"], emoji)
+
+    settings_store.update_guild_settings(
+        guild_id,
+        job_roles={
+            "message_id": int(message["id"]),
+            "channel_id": channel_id,
+            "emoji_to_role": emoji_to_role,
+        },
+    )
+    return redirect(url_for("guild_jobs", guild_id=guild_id))
 
 
 @app.route("/guild/<int:guild_id>/hub", methods=["GET", "POST"])

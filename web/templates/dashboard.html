@@ -21,6 +21,16 @@
     <span class="tag">설정하기 →</span>
   </a>
 
+  <a class="card status-card" href="{{ url_for('guild_jobs', guild_id=guild_id) }}">
+    <div class="card-title"><div class="card-icon">🎭</div><h2>직업 선택</h2></div>
+    {% if settings.get('job_roles', {}).get('channel_id') %}
+    <p class="status-line ok">✅ #{{ channels_by_id.get(settings.job_roles.channel_id, '알 수 없는 채널') }} 에 게시됨 ({{ job_list|length }}개 직업)</p>
+    {% else %}
+    <p class="status-line warn">⚠️ 아직 게시하지 않았어요 ({{ job_list|length }}개 등록됨)</p>
+    {% endif %}
+    <span class="tag">설정하기 →</span>
+  </a>
+
   <a class="card status-card" href="{{ url_for('guild_announcements', guild_id=guild_id) }}">
     <div class="card-title"><div class="card-icon">📢</div><h2>공지사항 · 규칙</h2></div>
     {% if announcement.channel_id %}
