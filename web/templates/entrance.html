@@ -14,11 +14,7 @@
     <label>안내 내용</label>
     <textarea name="body" rows="10" placeholder="예: 아래 버튼을 눌러 캐릭터 인증을 진행해주세요.">{{ entrance.body or '' }}</textarea>
 
-    <label>이미지 첨부 (선택)</label>
-    <input type="file" name="image_file" accept="image/*">
-
-    <label>또는 이미지 URL (선택 — 파일을 첨부하면 이 값은 무시됩니다)</label>
-    <input type="text" name="image_url" placeholder="https://...">
+    {% include "_image_picker.html" %}
 
     <label>안내를 올릴 채널</label>
     <select name="channel_id" required>

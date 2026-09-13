@@ -14,11 +14,7 @@
     <label>공지 내용</label>
     <textarea name="body" rows="14" placeholder="예: 1. 길드원 간 예의를 지켜주세요...">{{ announcement.body or '' }}</textarea>
 
-    <label>이미지 첨부 (선택)</label>
-    <input type="file" name="image_file" accept="image/*">
-
-    <label>또는 이미지 URL (선택 — 파일을 첨부하면 이 값은 무시됩니다)</label>
-    <input type="text" name="image_url" placeholder="https://...">
+    {% include "_image_picker.html" %}
 
     <label>공지를 올릴 채널</label>
     <select name="channel_id" required>

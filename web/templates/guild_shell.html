@@ -44,6 +44,45 @@
   .sidebar { width: 100%; min-height: auto; position: static; }
   .content { padding: 20px; }
 }
+
+/* 이미지 선택 위젯 (URL / 파일 업로드 / 내장 이미지 + 자르기) */
+.image-picker { margin: 12px 0 4px; }
+.ip-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.ip-tab {
+  margin-top: 0; padding: 6px 12px; font-size: 12px; font-weight: 600;
+  background: var(--panel); color: var(--muted); border: 1px solid var(--card-border);
+  border-radius: 999px; cursor: pointer;
+}
+.ip-tab.active { background: var(--accent); color: white; border-color: var(--accent); }
+.ip-panel { margin-bottom: 10px; }
+.ip-gallery {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 8px; max-height: 260px; overflow-y: auto; padding: 8px;
+  border: 1px solid var(--card-border); border-radius: 8px; background: var(--panel);
+}
+.ip-gallery-thumb {
+  width: 100%; height: 90px; object-fit: cover; border-radius: 6px; cursor: pointer;
+  border: 2px solid transparent; display: block;
+}
+.ip-gallery-thumb:hover { border-color: var(--accent); }
+.ip-gallery-thumb.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent); }
+.ip-crop-wrap {
+  margin: 10px 0; padding: 12px; border: 1px solid var(--card-border);
+  border-radius: 8px; background: var(--panel);
+}
+.ip-crop-stage {
+  position: relative; display: inline-block; max-width: 100%;
+  margin-top: 8px; user-select: none; cursor: crosshair;
+}
+.ip-crop-image { max-width: 100%; max-height: 340px; display: block; border-radius: 6px; }
+.ip-crop-box {
+  position: absolute; border: 2px dashed var(--accent);
+  background: rgba(91, 140, 255, 0.18); pointer-events: none;
+}
+.ip-crop-actions { display: flex; align-items: center; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+.ip-crop-actions button { margin-top: 0; padding: 8px 14px; font-size: 12px; }
+.ip-crop-actions .ip-crop-reset { background: var(--card); color: var(--muted); }
+.ip-crop-status { font-size: 11px; }
 {% endblock %}
 
 {% block body %}
@@ -73,4 +112,126 @@
     {% block section %}{% endblock %}
   </main>
 </div>
+
+<script>
+  // 이미지 선택 위젯(_image_picker.html) 공통 동작. 페이지마다 이 위젯을 붙이면
+  // (하나뿐이라고 가정) URL/파일 업로드/내장 이미지 중 뭘 고르든 최종적으로는
+  // name="image_file"인 숨겨진 input에 결과 파일을 넣어서, 서버 쪽 코드는 그냥
+  // 지금까지처럼 "파일이 있으면 파일 우선, 없으면 URL" 로직만 보면 되게 만든다.
+  document.querySelectorAll(".image-picker").forEach(function (root) {
+    const tabs = root.querySelectorAll(".ip-tab");
+    const panels = root.querySelectorAll(".ip-panel");
+    const finalInput = root.querySelector(".ip-final-input");
+    const fileSource = root.querySelector(".ip-file-source");
+    const gallery = root.querySelectorAll(".ip-gallery-thumb");
+    const cropWrap = root.querySelector(".ip-crop-wrap");
+    const cropImage = root.querySelector(".ip-crop-image");
+    const cropStage = root.querySelector(".ip-crop-stage");
+    const cropBox = root.querySelector(".ip-crop-box");
+    const cropApplyBtn = root.querySelector(".ip-crop-apply");
+    const cropResetBtn = root.querySelector(".ip-crop-reset");
+    const cropStatus = root.querySelector(".ip-crop-status");
+
+    let originalFile = null;
+    let dragStart = null;
+
+    function setFinalFile(file) {
+      const dt = new DataTransfer();
+      dt.items.add(file);
+      finalInput.files = dt.files;
+    }
+
+    function loadImage(file, isOriginal) {
+      if (isOriginal) originalFile = file;
+      setFinalFile(file);
+      cropImage.onload = function () {
+        cropBox.hidden = true;
+        cropStatus.textContent = isOriginal ? "" : "✂️ 잘린 이미지가 적용됐어요";
+      };
+      cropImage.src = URL.createObjectURL(file);
+      cropWrap.hidden = false;
+    }
+
+    tabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        tabs.forEach(function (t) { t.classList.remove("active"); });
+        tab.classList.add("active");
+        panels.forEach(function (p) { p.hidden = p.dataset.panel !== tab.dataset.mode; });
+        if (tab.dataset.mode === "url") {
+          // URL 탭으로 바꿨으면 이전에 골라둔 파일은 비워서 서버가 URL 값을 쓰게 한다.
+          finalInput.value = "";
+          cropWrap.hidden = true;
+          originalFile = null;
+        }
+      });
+    });
+
+    if (fileSource) {
+      fileSource.addEventListener("change", function () {
+        if (fileSource.files && fileSource.files[0]) loadImage(fileSource.files[0], true);
+      });
+    }
+
+    gallery.forEach(function (thumb) {
+      thumb.addEventListener("click", function () {
+        gallery.forEach(function (t) { t.classList.remove("selected"); });
+        thumb.classList.add("selected");
+        fetch(thumb.src, { credentials: "same-origin" })
+          .then(function (r) { return r.blob(); })
+          .then(function (blob) {
+            loadImage(new File([blob], thumb.dataset.name.split("/").pop(), { type: blob.type }), true);
+          });
+      });
+    });
+
+    if (cropStage) {
+      cropStage.addEventListener("mousedown", function (e) {
+        const rect = cropStage.getBoundingClientRect();
+        dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        Object.assign(cropBox.style, { left: dragStart.x + "px", top: dragStart.y + "px", width: "0px", height: "0px" });
+        cropBox.hidden = false;
+      });
+      cropStage.addEventListener("mousemove", function (e) {
+        if (!dragStart) return;
+        const rect = cropStage.getBoundingClientRect();
+        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+        const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+        Object.assign(cropBox.style, {
+          left: Math.min(x, dragStart.x) + "px",
+          top: Math.min(y, dragStart.y) + "px",
+          width: Math.abs(x - dragStart.x) + "px",
+          height: Math.abs(y - dragStart.y) + "px",
+        });
+      });
+      window.addEventListener("mouseup", function () { dragStart = null; });
+    }
+
+    if (cropApplyBtn) {
+      cropApplyBtn.addEventListener("click", function () {
+        if (cropBox.hidden) return;
+        const scaleX = cropImage.naturalWidth / cropImage.clientWidth;
+        const scaleY = cropImage.naturalHeight / cropImage.clientHeight;
+        const sx = parseFloat(cropBox.style.left) * scaleX;
+        const sy = parseFloat(cropBox.style.top) * scaleY;
+        const sw = parseFloat(cropBox.style.width) * scaleX;
+        const sh = parseFloat(cropBox.style.height) * scaleY;
+        if (sw < 4 || sh < 4) return;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = sw;
+        canvas.height = sh;
+        canvas.getContext("2d").drawImage(cropImage, sx, sy, sw, sh, 0, 0, sw, sh);
+        canvas.toBlob(function (blob) {
+          loadImage(new File([blob], "cropped.png", { type: "image/png" }), false);
+        }, "image/png");
+      });
+    }
+
+    if (cropResetBtn) {
+      cropResetBtn.addEventListener("click", function () {
+        if (originalFile) loadImage(originalFile, true);
+      });
+    }
+  });
+</script>
 {% endblock %}

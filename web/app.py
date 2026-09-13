@@ -33,13 +33,14 @@ import os
 import sys
 
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, request, session, url_for
+from flask import Flask, redirect, render_template, request, send_from_directory, session, url_for
 
 # "python web/app.py"로 실행하면 파이썬이 기본적으로 web/ 폴더만 찾다보니, 한 단계
 # 위에 있는 core/ 폴더(core/discord_api.py, core/settings_store.py)를 못 찾아서
 # "ModuleNotFoundError: No module named 'core'" 오류가 난다. 아래 줄로 프로젝트
 # 최상위 폴더(main.py가 있는 곳)를 검색 경로에 직접 추가해서 해결한다.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, PROJECT_ROOT)
 
 from core import discord_api, settings_store  # noqa: E402
 
@@ -56,6 +57,23 @@ if not WEB_ADMIN_TOKEN:
 # 길드 직급 목록 (위쪽일수록 높은 직급). 이모지로 셀프 지급하면 아무나 "길드마스터"를
 # 누를 수 있게 되므로, 직급은 아래 멤버 목록에서 관리자가 직접 눌러서만 부여한다.
 GUILD_RANKS = ["길드마스터", "부길드장", "길드원", "신입길드원"]
+
+# 캐릭터 그림 등 미리 준비해둔 이미지를 넣어두는 폴더. 공지/안내 이미지를 고를 때
+# 매번 파일을 다시 올리지 않고 여기서 골라 쓸 수 있게 한다 (아래 "내장 이미지" 탭).
+IMG_DIR = os.path.join(PROJECT_ROOT, "img")
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+
+
+def _list_builtin_images() -> list[str]:
+    if not os.path.isdir(IMG_DIR):
+        return []
+    found = []
+    for root, _dirs, files in os.walk(IMG_DIR):
+        for name in files:
+            if name.lower().endswith(IMAGE_EXTENSIONS):
+                rel = os.path.relpath(os.path.join(root, name), IMG_DIR)
+                found.append(rel.replace(os.sep, "/"))
+    return sorted(found)
 
 ENTRANCE_BUTTON_COMPONENTS = [
     {
@@ -103,6 +121,12 @@ def index():
     if len(guilds) == 1:
         return redirect(url_for("guild_page", guild_id=guilds[0]["id"]))
     return render_template("index.html", guilds=guilds)
+
+
+@app.route("/assets/<path:filename>")
+def serve_asset(filename):
+    """img/ 폴더의 내장 이미지를 브라우저에 보여준다. (로그인 세션이 있어야 접근 가능)"""
+    return send_from_directory(IMG_DIR, filename)
 
 
 def _channels(guild_id: int) -> dict:
@@ -188,6 +212,7 @@ def guild_entrance(guild_id):
         page_desc="새로 들어온 길드원에게 보여줄 안내 메시지를 만들어요.",
         text_channels=_channels(guild_id)["text_channels"],
         entrance=entrance,
+        builtin_images=_list_builtin_images(),
     )
 
 
@@ -263,6 +288,7 @@ def guild_announcements(guild_id):
         page_desc="길드 규칙이나 이벤트 공지를 채널에 올려요.",
         text_channels=_channels(guild_id)["text_channels"],
         announcement=announcement,
+        builtin_images=_list_builtin_images(),
     )
 
 
@@ -300,6 +326,7 @@ def guild_jobs(guild_id):
         job_list=settings.get("job_list", []),
         announcement_draft=settings.get("job_announcement_draft", {}),
         settings=settings,
+        builtin_images=_list_builtin_images(),
     )
 
 
