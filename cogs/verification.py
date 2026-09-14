@@ -20,10 +20,15 @@
 """
 from __future__ import annotations
 
+import io
+
+import aiohttp
 import discord
 from discord.ext import commands
 
 from core.settings_store import get_guild_settings, update_guild_settings
+
+FILES_PER_MESSAGE = 10  # 디스코드 메시지 하나당 첨부파일 최대 개수
 
 VERIFY_START = "siro:verify_start"
 VERIFY_APPROVE_PREFIX = "siro:verify_approve:"
@@ -322,6 +327,22 @@ class Verification(commands.Cog):
             pass
         return urls
 
+    async def _download_image(self, url: str) -> discord.File | None:
+        """이미지 주소에서 실제 파일 내용을 받아와 디스코드에 다시 첨부할 수 있는
+        형태(discord.File)로 만든다. 그냥 embed에 URL만 넣으면 이미지 하나당 임베드가
+        하나씩 필요해서 세로로 길게 늘어지는데, 진짜 첨부파일로 여러 장을 같이 보내면
+        디스코드가 알아서 작은 바둑판(그리드) 미리보기로 묶어서 보여준다."""
+        filename = url.split("?")[0].rsplit("/", 1)[-1] or "image.png"
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, timeout=aiohttp.ClientTimeout(total=15)) as resp:
+                    if resp.status != 200:
+                        return None
+                    data = await resp.read()
+        except aiohttp.ClientError:
+            return None
+        return discord.File(io.BytesIO(data), filename=filename)
+
     async def _log_verification(
         self,
         guild: discord.Guild,
@@ -333,8 +354,9 @@ class Verification(commands.Cog):
     ) -> None:
         """웹 설정에서 '인증 로그 채널'을 지정해뒀으면, 승인된 인증 내역을 거기 정리해서 남긴다.
 
-        image_urls는 스레드 전체에서 모은 이미지라 여러 장일 수 있다. 디스코드는 메시지
-        하나에 임베드를 최대 10개까지만 허용해서, 그보다 많으면 메시지를 나눠 보낸다.
+        image_urls는 스레드 전체에서 모은 이미지라 여러 장일 수 있다. 첨부파일로 같이
+        보내서 바둑판 형태의 작은 미리보기로 묶이게 하고, 10장을 넘으면(디스코드 메시지
+        하나당 첨부파일 제한) 메시지를 나눠 보낸다.
         """
         log_channel_id = verification.get("log_channel_id")
         if not log_channel_id:
@@ -354,16 +376,19 @@ class Verification(commands.Cog):
             footer += f" · 이미지 {len(image_urls)}장"
         log_embed.set_footer(text=footer)
 
-        log_embeds = [log_embed]
-        if image_urls:
-            log_embed.set_image(url=image_urls[0])
-            for extra_url in image_urls[1:]:
-                log_embeds.append(discord.Embed(color=0x57F287).set_image(url=extra_url))
+        files = [f for f in [await self._download_image(url) for url in image_urls] if f is not None]
+        # 여러 장을 한 메시지에 같이 보낼 때 이름이 겹치면 디스코드가 거부하므로,
+        # 번호를 붙여서 겹치지 않게 한다.
+        for i, f in enumerate(files):
+            f.filename = f"{i}_{f.filename}"
 
-        EMBEDS_PER_MESSAGE = 10  # 디스코드 API 제한
         try:
-            for i in range(0, len(log_embeds), EMBEDS_PER_MESSAGE):
-                await log_channel.send(embeds=log_embeds[i : i + EMBEDS_PER_MESSAGE])
+            if not files:
+                await log_channel.send(embed=log_embed)
+                return
+            await log_channel.send(embed=log_embed, files=files[:FILES_PER_MESSAGE])
+            for i in range(FILES_PER_MESSAGE, len(files), FILES_PER_MESSAGE):
+                await log_channel.send(files=files[i : i + FILES_PER_MESSAGE])
         except discord.HTTPException:
             pass
 
