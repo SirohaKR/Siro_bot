@@ -504,7 +504,7 @@ def add_voice_hub(guild_id):
 
     settings = settings_store.get_guild_settings(guild_id)
     voice_hubs = settings.get("voice_hubs", [])
-    voice_hubs.append({"id": hub_channel_id, "name_template": name_template, "counter": 0})
+    voice_hubs.append({"id": hub_channel_id, "name_template": name_template})
     settings_store.update_guild_settings(guild_id, voice_hubs=voice_hubs)
     return redirect(url_for("guild_hub", guild_id=guild_id))
 

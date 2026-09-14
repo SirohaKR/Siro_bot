@@ -25,19 +25,24 @@
     "job_roles": {"message_id": 888, "channel_id": 666, "emoji_to_role": {"🦸": {"role_id": 777, "label": "히어로"}}},
     "rank_role_ids": {"길드마스터": 333, ...},
     "voice_hubs": [
-      {"id": 444, "name_template": "{user}의 파티", "counter": 12},
-      {"id": 555, "name_template": "개인방 {n}", "counter": 3},
-      {"id": 556, "name_template": "자유 음성방 {n}", "counter": 1}
+      {"id": 444, "name_template": "{user}의 파티"},
+      {"id": 555, "name_template": "개인방 {n}"},
+      {"id": 556, "name_template": "자유 음성방 {n}"}
     ],
-    "temp_voice_channel_ids": [555, 666],
+    "temp_voice_channels": [
+      {"channel_id": 777, "hub_id": 555, "number": 1},
+      {"channel_id": 778, "hub_id": 555, "number": 2}
+    ],
     "tts": {"channel_id": 777, "voice": "ko-KR-SunHiNeural"},
     "bot_log_channel_id": 999,
     "last_announced_version": "2026-09-14"
   }
 }
 
-name_template의 {user}는 입장한 사람 이름, {n}은 그 허브에서 몇 번째로 만든 채널인지로
-치환된다 (core/settings_store.py가 아니라 cogs/channels.py가 실제로 치환한다).
+name_template의 {user}는 입장한 사람 이름, {n}은 번호로 치환된다 (core/settings_store.py가
+아니라 cogs/channels.py가 실제로 치환한다). {n} 번호는 그 허브에서 "지금 살아있는
+채널 중 비어있는 가장 작은 번호"를 쓴다 — 누적 카운터가 아니라서, 방이 지워지면
+다음에 그 번호가 다시 쓰인다.
 """
 from __future__ import annotations
 
@@ -82,8 +87,16 @@ def get_guild_settings(guild_id: int) -> dict:
     # 예전엔 음성 허브가 hub_voice_channel_id 하나뿐이었다. 여러 개를 관리하는
     # voice_hubs 목록으로 옮겨준다 (이름은 기존 동작 그대로 "{user}의 파티").
     if "voice_hubs" not in settings and settings.get("hub_voice_channel_id"):
-        settings["voice_hubs"] = [
-            {"id": settings["hub_voice_channel_id"], "name_template": "{user}의 파티", "counter": 0}
+        settings["voice_hubs"] = [{"id": settings["hub_voice_channel_id"], "name_template": "{user}의 파티"}]
+        changed = True
+
+    # 예전엔 봇이 만든 임시 음성채널을 그냥 ID 목록(temp_voice_channel_ids)으로만
+    # 관리해서, 허브별로 몇 번 방이 지금 몇 개나 떠있는지 알 수 없었다(그래서 번호가
+    # 계속 누적되기만 했다). 어느 허브 소속인지/번호가 뭐였는지는 알 수 없으니
+    # hub_id/number는 비워두고, "삭제 감시 대상"으로만 이어서 관리한다.
+    if "temp_voice_channels" not in settings and settings.get("temp_voice_channel_ids"):
+        settings["temp_voice_channels"] = [
+            {"channel_id": cid, "hub_id": None, "number": None} for cid in settings["temp_voice_channel_ids"]
         ]
         changed = True
 
