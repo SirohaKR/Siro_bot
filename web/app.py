@@ -485,14 +485,16 @@ def guild_hub(guild_id):
 def add_voice_hub(guild_id):
     """음성 허브를 하나 추가한다. 기존 채널을 고르거나, 이름을 입력해 새로 만들 수 있다.
 
-    name_template 안의 {user}는 입장한 사람 이름, {n}은 그 허브에서 몇 번째로 만든
-    채널인지로 바뀐다 (실제 치환은 cogs/channels.py가 한다). 화면에는 자주 쓰는 형태
-    (이름별/번호별/자유) 버튼을 미리 만들어뒀지만, 직접 원하는 문구로 바꿔도 된다.
+    name_template 안의 {user}는 입장한 사람 이름, {n}은 번호로 바뀐다 (실제 치환은
+    cogs/channels.py가 한다). user_limit을 정해두면 새로 만드는 채널마다 디스코드
+    자체 인원 제한이 걸린다 (예: 1인 개인방은 1로 설정). 화면에는 자주 쓰는 형태
+    (이름별/번호별/자유) 버튼을 미리 만들어뒀지만, 직접 원하는 값으로 바꿔도 된다.
     """
     existing_id = request.form.get("existing_channel_id")
     new_name = (request.form.get("new_channel_name") or "").strip()
     parent_id = request.form.get("parent_id") or None
     name_template = (request.form.get("name_template") or "").strip() or "{user}의 방"
+    user_limit = request.form.get("user_limit", type=int) or 0
 
     if existing_id:
         hub_channel_id = int(existing_id)
@@ -504,7 +506,9 @@ def add_voice_hub(guild_id):
 
     settings = settings_store.get_guild_settings(guild_id)
     voice_hubs = settings.get("voice_hubs", [])
-    voice_hubs.append({"id": hub_channel_id, "name_template": name_template})
+    voice_hubs.append(
+        {"id": hub_channel_id, "name_template": name_template, "user_limit": max(0, min(99, user_limit))}
+    )
     settings_store.update_guild_settings(guild_id, voice_hubs=voice_hubs)
     return redirect(url_for("guild_hub", guild_id=guild_id))
 

@@ -17,6 +17,9 @@
      번호"를 쓴다. 예를 들어 "개인방 1"이 있는 상태에서 하나 더 만들면 "개인방 2"가
      되고, "개인방 1"이 사라진 뒤에 새로 만들면 다시 "개인방 1"부터 채워진다
      (총 몇 번 만들었는지 계속 세는 게 아니라, 지금 몇 개나 떠 있는지를 본다).
+   - 허브에 user_limit(최대 인원)이 정해져 있으면 새로 만드는 채널에도 그대로
+     적용한다. 예) 1인 개인방 허브는 user_limit=1로 만들어서 디스코드가 알아서
+     두 번째 사람은 못 들어오게 막아준다.
 2. 봇이 만들어준 그 채널에 아무도 안 남으면 -> 자동으로 삭제한다.
 """
 from __future__ import annotations
@@ -63,6 +66,7 @@ class Channels(commands.Cog):
                 new_channel = await guild.create_voice_channel(
                     name=name,
                     category=after.channel.category,
+                    user_limit=hub.get("user_limit") or 0,  # 0 = 디스코드 기준 무제한
                     reason="음성 허브 입장으로 자동 생성",
                 )
                 await member.move_to(new_channel, reason="자동 생성된 채널로 이동")
