@@ -28,6 +28,7 @@ INITIAL_EXTENSIONS = [
     "cogs.roles",  # 채팅채널에 올린 공지 + 이모지 반응으로 직업 등 역할 셀프 선택
     "cogs.channels",
     "cogs.tts",  # 지정한 텍스트채널의 글을 음성채널에서 읽어주는 TTS
+    "cogs.big_emoji",  # 이모티콘 하나만 온 메시지를 스티커 크기로 키워서 재게시
     "cogs.info",  # "/설정" 명령어 — 웹 설정 페이지 주소를 알려줌
 ]
 
