@@ -20,13 +20,23 @@
       "threads": {"444(유저ID)": 555(스레드ID)}
     },
     "announcement": {"channel_id": 666, "title": "...", "body": "...", "message_id": 777},
+    "guild_rules": {"channel_id": 666, "title": "...", "body": "...", "message_id": 777},
     "job_list": [{"label": "히어로", "emoji": "🦸", "role_id": 777}, ...],
     "job_roles": {"message_id": 888, "channel_id": 666, "emoji_to_role": {"🦸": {"role_id": 777, "label": "히어로"}}},
     "rank_role_ids": {"길드마스터": 333, ...},
-    "hub_voice_channel_id": 444,
-    "temp_voice_channel_ids": [555, 666]
+    "voice_hubs": [
+      {"id": 444, "name_template": "{user}의 파티", "counter": 12},
+      {"id": 555, "name_template": "개인방 {n}", "counter": 3},
+      {"id": 556, "name_template": "자유 음성방 {n}", "counter": 1}
+    ],
+    "temp_voice_channel_ids": [555, 666],
+    "bot_log_channel_id": 999,
+    "last_announced_version": "2026-09-14"
   }
 }
+
+name_template의 {user}는 입장한 사람 이름, {n}은 그 허브에서 몇 번째로 만든 채널인지로
+치환된다 (core/settings_store.py가 아니라 cogs/channels.py가 실제로 치환한다).
 """
 from __future__ import annotations
 
@@ -52,9 +62,35 @@ def _save_all(data: dict) -> None:
 
 
 def get_guild_settings(guild_id: int) -> dict:
-    """특정 서버의 설정을 딕셔너리로 가져온다. 아직 설정한 적이 없으면 빈 딕셔너리를 준다."""
+    """특정 서버의 설정을 딕셔너리로 가져온다. 아직 설정한 적이 없으면 빈 딕셔너리를 준다.
+
+    예전 구조로 저장된 서버 설정을 처음 읽을 때 자동으로 새 구조로 옮겨주는(마이그레이션)
+    작업도 여기서 한다 — 옮긴 뒤에는 바로 저장해서 다음부터는 이 코드를 다시 안 타게 한다.
+    """
     all_data = _load_all()
-    return all_data.get(str(guild_id), {})
+    guild_key = str(guild_id)
+    settings = all_data.get(guild_key, {})
+    changed = False
+
+    # 예전엔 "공지사항"과 "길드 규칙"이 한 기능(announcement)이었다. 이미 써둔 내용을
+    # 새로 나뉜 "길드 규칙" 쪽으로 그대로 옮겨서 이어서 쓸 수 있게 한다.
+    if "guild_rules" not in settings and settings.get("announcement"):
+        settings["guild_rules"] = dict(settings["announcement"])
+        changed = True
+
+    # 예전엔 음성 허브가 hub_voice_channel_id 하나뿐이었다. 여러 개를 관리하는
+    # voice_hubs 목록으로 옮겨준다 (이름은 기존 동작 그대로 "{user}의 파티").
+    if "voice_hubs" not in settings and settings.get("hub_voice_channel_id"):
+        settings["voice_hubs"] = [
+            {"id": settings["hub_voice_channel_id"], "name_template": "{user}의 파티", "counter": 0}
+        ]
+        changed = True
+
+    if changed:
+        all_data[guild_key] = settings
+        _save_all(all_data)
+
+    return settings
 
 
 def update_guild_settings(guild_id: int, **kwargs: Any) -> None:

@@ -15,6 +15,9 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 
+from core.changelog import get_latest_entry
+from core.settings_store import get_guild_settings, update_guild_settings
+
 load_dotenv()  # .env 파일에 적어둔 DISCORD_TOKEN 같은 값을 읽어온다.
 
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -68,6 +71,36 @@ async def on_ready():
             print(f"⚠️ 슬래시 명령어 길드 동기화 실패: {e}")
 
     print("=" * 40 + "\n")
+
+    await _announce_update()
+
+
+async def _announce_update():
+    """CHANGELOG.md의 최신 항목을, 아직 못 본 서버들의 '업데이트 로그' 채널에 알려준다.
+
+    서버별로 core/settings_store.py의 last_announced_version과 비교해서, 이미 알려준
+    버전이면 건너뛴다 — 재접속으로 on_ready가 여러 번 불려도 중복으로 올라가지 않는다.
+    """
+    entry = get_latest_entry()
+    if entry is None:
+        return
+    version, body = entry
+
+    for guild in bot.guilds:
+        settings = get_guild_settings(guild.id)
+        log_channel_id = settings.get("bot_log_channel_id")
+        if not log_channel_id or settings.get("last_announced_version") == version:
+            continue
+
+        channel = guild.get_channel(log_channel_id)
+        if isinstance(channel, discord.TextChannel):
+            embed = discord.Embed(title=f"🛠️ 레일라 업데이트 ({version})", description=body, color=0x5B8CFF)
+            try:
+                await channel.send(embed=embed)
+            except discord.HTTPException as e:
+                print(f"⚠️ 업데이트 로그 전송 실패 (guild={guild.id}): {e}")
+
+        update_guild_settings(guild.id, last_announced_version=version)
 
 
 async def main():

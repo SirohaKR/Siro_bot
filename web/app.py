@@ -160,7 +160,7 @@ def _post_embed(channel_id: int, title: str, body: str, image_url: str, image_fi
 @app.route("/guild/<int:guild_id>")
 def guild_page(guild_id):
     settings = settings_store.get_guild_settings(guild_id)
-    channels_by_id = _channels(guild_id)["channels_by_id"]
+    ch = _channels(guild_id)
     _, roles_by_id = _roles(guild_id)
 
     return render_template(
@@ -173,12 +173,23 @@ def guild_page(guild_id):
         entrance=settings.get("entrance", {}),
         verification=settings.get("verification", {}),
         announcement=settings.get("announcement", {}),
+        rules=settings.get("guild_rules", {}),
         job_list=settings.get("job_list", []),
         rank_role_ids=settings.get("rank_role_ids", {}),
         guild_ranks=GUILD_RANKS,
-        channels_by_id=channels_by_id,
+        channels_by_id=ch["channels_by_id"],
+        text_channels=ch["text_channels"],
         roles_by_id=roles_by_id,
     )
+
+
+@app.route("/guild/<int:guild_id>/bot-log", methods=["POST"])
+def set_bot_log_channel(guild_id):
+    """업데이트 내역을 자동으로 남길 채널을 지정한다. main.py가 시작할 때(또는 새 버전이
+    감지될 때) CHANGELOG.md의 최신 항목을 이 채널에 올려준다."""
+    channel_id = request.form.get("channel_id")
+    settings_store.update_guild_settings(guild_id, bot_log_channel_id=int(channel_id) if channel_id else None)
+    return redirect(url_for("guild_page", guild_id=guild_id))
 
 
 @app.route("/guild/<int:guild_id>/entrance", methods=["GET", "POST"])
@@ -263,7 +274,8 @@ def guild_verification(guild_id):
 
 @app.route("/guild/<int:guild_id>/announcements", methods=["GET", "POST"])
 def guild_announcements(guild_id):
-    """길드 규칙/이벤트 공지 등을 원하는 채널에 올린다. 인증 버튼 없이 순수 공지용."""
+    """이벤트/소식처럼 그때그때 알릴 공지사항을 원하는 채널에 올린다. 누를 때마다 새
+    메시지로 게시된다 (계속 남겨둘 내용은 "길드 규칙" 페이지를 쓴다)."""
     if request.method == "POST":
         channel_id = int(request.form["channel_id"])
         title = (request.form.get("title") or "").strip() or "공지"
@@ -284,10 +296,42 @@ def guild_announcements(guild_id):
         "announcements.html",
         guild_id=guild_id,
         active="announcements",
-        page_title="📢 공지사항 · 규칙",
-        page_desc="길드 규칙이나 이벤트 공지를 채널에 올려요.",
+        page_title="📢 공지사항",
+        page_desc="이벤트, 소식 등 그때그때 알릴 내용을 채널에 올려요. 누를 때마다 새 메시지로 게시돼요.",
         text_channels=_channels(guild_id)["text_channels"],
         announcement=announcement,
+        builtin_images=_list_builtin_images(),
+    )
+
+
+@app.route("/guild/<int:guild_id>/rules", methods=["GET", "POST"])
+def guild_rules(guild_id):
+    """길드 규칙처럼 계속 남겨둘 안내를 채널에 올린다. 공지사항과 저장 위치만 다를 뿐
+    동작은 동일하다 (구조를 나눈 이유는 07-14 업데이트로 두 기능을 분리했기 때문)."""
+    if request.method == "POST":
+        channel_id = int(request.form["channel_id"])
+        title = (request.form.get("title") or "").strip() or "길드 규칙"
+        body = (request.form.get("body") or "").strip()
+        image_url = (request.form.get("image_url") or "").strip()
+        image_file = request.files.get("image_file")
+
+        message = _post_embed(channel_id, title, body, image_url, image_file)
+
+        settings_store.update_guild_settings(
+            guild_id,
+            guild_rules={"channel_id": channel_id, "title": title, "body": body, "message_id": int(message["id"])},
+        )
+        return redirect(url_for("guild_rules", guild_id=guild_id))
+
+    rules = settings_store.get_guild_settings(guild_id).get("guild_rules", {})
+    return render_template(
+        "rules.html",
+        guild_id=guild_id,
+        active="rules",
+        page_title="📜 길드 규칙",
+        page_desc="계속 남겨둘 길드 규칙을 채널에 올려요. 다시 게시하면 새 메시지로 올라가니, 이전 메시지는 직접 지워주세요.",
+        text_channels=_channels(guild_id)["text_channels"],
+        rules=rules,
         builtin_images=_list_builtin_images(),
     )
 
@@ -408,35 +452,63 @@ def post_job_roles(guild_id):
     return redirect(url_for("guild_jobs", guild_id=guild_id))
 
 
-@app.route("/guild/<int:guild_id>/hub", methods=["GET", "POST"])
+@app.route("/guild/<int:guild_id>/hub")
 def guild_hub(guild_id):
-    if request.method == "POST":
-        existing_id = request.form.get("existing_channel_id")
-        new_name = (request.form.get("new_channel_name") or "").strip()
-        parent_id = request.form.get("parent_id") or None
-
-        if existing_id:
-            hub_channel_id = int(existing_id)
-        elif new_name:
-            channel = discord_api.create_voice_channel(guild_id, new_name, int(parent_id) if parent_id else None)
-            hub_channel_id = int(channel["id"])
-        else:
-            return redirect(url_for("guild_hub", guild_id=guild_id))
-
-        settings_store.update_guild_settings(guild_id, hub_voice_channel_id=hub_channel_id)
-        return redirect(url_for("guild_hub", guild_id=guild_id))
-
     ch = _channels(guild_id)
+    settings = settings_store.get_guild_settings(guild_id)
     return render_template(
         "hub.html",
         guild_id=guild_id,
         active="hub",
-        page_title="🔊 파티모집 채널",
-        page_desc="음성채널에 들어가면 개인 파티 채널이 자동으로 생기게 해요.",
+        page_title="🔊 음성 채널 자동 생성",
+        page_desc="채널에 들어가면 개인/자유 음성방이 자동으로 생기게 해요. 허브는 원하는 만큼 추가할 수 있어요.",
         voice_channels=ch["voice_channels"],
         categories=ch["categories"],
-        settings=settings_store.get_guild_settings(guild_id),
+        channels_by_id=ch["channels_by_id"],
+        voice_hubs=settings.get("voice_hubs", []),
     )
+
+
+@app.route("/guild/<int:guild_id>/hub/add", methods=["POST"])
+def add_voice_hub(guild_id):
+    """음성 허브를 하나 추가한다. 기존 채널을 고르거나, 이름을 입력해 새로 만들 수 있다.
+
+    name_template 안의 {user}는 입장한 사람 이름, {n}은 그 허브에서 몇 번째로 만든
+    채널인지로 바뀐다 (실제 치환은 cogs/channels.py가 한다). 화면에는 자주 쓰는 형태
+    (이름별/번호별/자유) 버튼을 미리 만들어뒀지만, 직접 원하는 문구로 바꿔도 된다.
+    """
+    existing_id = request.form.get("existing_channel_id")
+    new_name = (request.form.get("new_channel_name") or "").strip()
+    parent_id = request.form.get("parent_id") or None
+    name_template = (request.form.get("name_template") or "").strip() or "{user}의 방"
+
+    if existing_id:
+        hub_channel_id = int(existing_id)
+    elif new_name:
+        channel = discord_api.create_voice_channel(guild_id, new_name, int(parent_id) if parent_id else None)
+        hub_channel_id = int(channel["id"])
+    else:
+        return redirect(url_for("guild_hub", guild_id=guild_id))
+
+    settings = settings_store.get_guild_settings(guild_id)
+    voice_hubs = settings.get("voice_hubs", [])
+    voice_hubs.append({"id": hub_channel_id, "name_template": name_template, "counter": 0})
+    settings_store.update_guild_settings(guild_id, voice_hubs=voice_hubs)
+    return redirect(url_for("guild_hub", guild_id=guild_id))
+
+
+@app.route("/guild/<int:guild_id>/hub/delete", methods=["POST"])
+def delete_voice_hub(guild_id):
+    """음성 허브 설정을 하나 뺀다. (허브로 쓰던 디스코드 채널 자체는 지우지 않는다)"""
+    index = request.form.get("index", type=int)
+    settings = settings_store.get_guild_settings(guild_id)
+    voice_hubs = settings.get("voice_hubs", [])
+
+    if index is not None and 0 <= index < len(voice_hubs):
+        voice_hubs.pop(index)
+        settings_store.update_guild_settings(guild_id, voice_hubs=voice_hubs)
+
+    return redirect(url_for("guild_hub", guild_id=guild_id))
 
 
 @app.route("/guild/<int:guild_id>/ranks", methods=["GET", "POST"])
@@ -509,8 +581,8 @@ def guild_members(guild_id):
         "members.html",
         guild_id=guild_id,
         active="members",
-        page_title="🧑‍🤝‍🧑 멤버 관리",
-        page_desc="멤버를 골라서 직급을 직접 부여해요 (셀프 지급 아님).",
+        page_title="🧑‍🤝‍🧑 역할 부여",
+        page_desc="멤버를 골라서 직급 역할을 직접 부여해요 (셀프 지급 아님).",
         members=sorted(members, key=lambda m: m["name"].lower()),
         guild_ranks=GUILD_RANKS,
     )

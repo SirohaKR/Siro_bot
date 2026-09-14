@@ -94,10 +94,11 @@
       <a href="{{ url_for('guild_entrance', guild_id=guild_id) }}" class="{{ 'active' if active == 'entrance' else '' }}">🚪 입장 안내</a>
       <a href="{{ url_for('guild_verification', guild_id=guild_id) }}" class="{{ 'active' if active == 'verification' else '' }}">🔑 캐릭터 인증</a>
       <a href="{{ url_for('guild_jobs', guild_id=guild_id) }}" class="{{ 'active' if active == 'jobs' else '' }}">🎭 직업 선택</a>
-      <a href="{{ url_for('guild_announcements', guild_id=guild_id) }}" class="{{ 'active' if active == 'announcements' else '' }}">📢 공지사항 · 규칙</a>
+      <a href="{{ url_for('guild_announcements', guild_id=guild_id) }}" class="{{ 'active' if active == 'announcements' else '' }}">📢 공지사항</a>
+      <a href="{{ url_for('guild_rules', guild_id=guild_id) }}" class="{{ 'active' if active == 'rules' else '' }}">📜 길드 규칙</a>
       <a href="{{ url_for('guild_hub', guild_id=guild_id) }}" class="{{ 'active' if active == 'hub' else '' }}">🔊 파티모집 채널</a>
       <a href="{{ url_for('guild_ranks', guild_id=guild_id) }}" class="{{ 'active' if active == 'ranks' else '' }}">👑 길드 직급</a>
-      <a href="{{ url_for('guild_members', guild_id=guild_id) }}" class="{{ 'active' if active == 'members' else '' }}">🧑‍🤝‍🧑 멤버 관리</a>
+      <a href="{{ url_for('guild_members', guild_id=guild_id) }}" class="{{ 'active' if active == 'members' else '' }}">🧑‍🤝‍🧑 역할 부여</a>
     </nav>
     {% if session.get('authed') %}
     <form method="post" action="{{ url_for('logout') }}">
@@ -130,6 +131,7 @@
     const cropBox = root.querySelector(".ip-crop-box");
     const cropApplyBtn = root.querySelector(".ip-crop-apply");
     const cropResetBtn = root.querySelector(".ip-crop-reset");
+    const cropRotateBtn = root.querySelector(".ip-crop-rotate");
     const cropStatus = root.querySelector(".ip-crop-status");
 
     let originalFile = null;
@@ -141,12 +143,12 @@
       finalInput.files = dt.files;
     }
 
-    function loadImage(file, isOriginal) {
+    function loadImage(file, isOriginal, statusText) {
       if (isOriginal) originalFile = file;
       setFinalFile(file);
       cropImage.onload = function () {
         cropBox.hidden = true;
-        cropStatus.textContent = isOriginal ? "" : "✂️ 잘린 이미지가 적용됐어요";
+        cropStatus.textContent = isOriginal ? "" : (statusText || "✂️ 잘린 이미지가 적용됐어요");
       };
       cropImage.src = URL.createObjectURL(file);
       cropWrap.hidden = false;
@@ -184,26 +186,63 @@
       });
     });
 
+    // 마우스(mousedown/move/up)와 손가락 터치(touchstart/move/end) 둘 다 같은
+    // 방식으로 처리한다. 폰에서는 mousedown류 이벤트가 안 먹혀서 드래그 자르기가
+    // 안 되던 문제를 이걸로 해결한다.
+    function pointFromEvent(e) {
+      const src = e.touches && e.touches.length ? e.touches[0] : e;
+      return { x: src.clientX, y: src.clientY };
+    }
+
     if (cropStage) {
-      cropStage.addEventListener("mousedown", function (e) {
+      function onDragStart(e) {
         const rect = cropStage.getBoundingClientRect();
-        dragStart = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        const p = pointFromEvent(e);
+        dragStart = { x: p.x - rect.left, y: p.y - rect.top };
         Object.assign(cropBox.style, { left: dragStart.x + "px", top: dragStart.y + "px", width: "0px", height: "0px" });
         cropBox.hidden = false;
-      });
-      cropStage.addEventListener("mousemove", function (e) {
+        if (e.touches) e.preventDefault(); // 드래그 중 화면이 같이 스크롤되는 것 방지
+      }
+      function onDragMove(e) {
         if (!dragStart) return;
         const rect = cropStage.getBoundingClientRect();
-        const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
-        const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height));
+        const p = pointFromEvent(e);
+        const x = Math.max(0, Math.min(p.x - rect.left, rect.width));
+        const y = Math.max(0, Math.min(p.y - rect.top, rect.height));
         Object.assign(cropBox.style, {
           left: Math.min(x, dragStart.x) + "px",
           top: Math.min(y, dragStart.y) + "px",
           width: Math.abs(x - dragStart.x) + "px",
           height: Math.abs(y - dragStart.y) + "px",
         });
+        if (e.touches) e.preventDefault();
+      }
+      function onDragEnd() { dragStart = null; }
+
+      cropStage.addEventListener("mousedown", onDragStart);
+      cropStage.addEventListener("mousemove", onDragMove);
+      window.addEventListener("mouseup", onDragEnd);
+      cropStage.addEventListener("touchstart", onDragStart, { passive: false });
+      cropStage.addEventListener("touchmove", onDragMove, { passive: false });
+      window.addEventListener("touchend", onDragEnd);
+    }
+
+    if (cropRotateBtn) {
+      cropRotateBtn.addEventListener("click", function () {
+        // 지금 보이는 이미지를 시계방향으로 90도 돌린 새 이미지로 바꿔치기한다.
+        // 폰으로 찍은 사진이 옆으로 누워 나올 때 이걸로 바로잡을 수 있다.
+        const canvas = document.createElement("canvas");
+        canvas.width = cropImage.naturalHeight;
+        canvas.height = cropImage.naturalWidth;
+        const ctx = canvas.getContext("2d");
+        ctx.translate(canvas.width / 2, canvas.height / 2);
+        ctx.rotate(Math.PI / 2);
+        ctx.drawImage(cropImage, -cropImage.naturalWidth / 2, -cropImage.naturalHeight / 2);
+        cropBox.hidden = true;
+        canvas.toBlob(function (blob) {
+          loadImage(new File([blob], "rotated.png", { type: "image/png" }), false, "🔄 회전이 적용됐어요");
+        }, "image/png");
       });
-      window.addEventListener("mouseup", function () { dragStart = null; });
     }
 
     if (cropApplyBtn) {
