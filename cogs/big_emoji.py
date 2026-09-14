@@ -14,7 +14,9 @@
 3. 이모지가 여러 개거나 다른 글자와 섞여 있으면 그냥 둔다.
 
 전체 서버, 모든 채널에서 항상 동작한다 (설정 페이지에서 켜고 끄는 기능 아님).
-원본의 작은 이모지 메시지는 지우지 않고, 답장(reply) 형태로 큰 이미지를 새로 올린다.
+큰 이미지를 새로 올린 다음, 원본의 작은 이모지 메시지는 지운다 (누가 보낸 건지는
+새 메시지의 작성자 표시로 남긴다). 원본을 지우려면 봇에게 '메시지 관리' 권한이
+있어야 하고, 없으면 원본은 그냥 남겨둔 채로 큰 이미지만 새로 올라간다.
 """
 from __future__ import annotations
 
@@ -84,9 +86,18 @@ class BigEmoji(commands.Cog):
 
     async def _post_big(self, message: discord.Message, image_url: str) -> None:
         embed = discord.Embed(color=0x5B8CFF)
+        embed.set_author(name=message.author.display_name, icon_url=message.author.display_avatar.url)
         embed.set_image(url=image_url)
+
         try:
-            await message.reply(embed=embed, mention_author=False)
+            await message.channel.send(embed=embed)
+        except discord.HTTPException:
+            return  # 새로 못 올렸으면 원본은 그대로 남겨둔다.
+
+        try:
+            await message.delete()
+        except discord.Forbidden:
+            pass  # '메시지 관리' 권한이 없으면 원본은 지우지 못하고 그냥 남는다.
         except discord.HTTPException:
             pass
 
