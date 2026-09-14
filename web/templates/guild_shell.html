@@ -83,6 +83,17 @@
 .ip-crop-actions button { margin-top: 0; padding: 8px 14px; font-size: 12px; }
 .ip-crop-actions .ip-crop-reset { background: var(--card); color: var(--muted); }
 .ip-crop-status { font-size: 11px; }
+
+/* TTS 목소리 목록 */
+.tts-voice-list { margin-top: 6px; }
+.tts-voice-row {
+  display: flex; align-items: center; gap: 10px; padding: 8px 4px;
+  border-bottom: 1px solid var(--card-border); font-size: 13px; cursor: pointer;
+}
+.tts-voice-row:last-child { border-bottom: none; }
+.tts-voice-row span { flex: 1; }
+.tts-preview-btn { margin-top: 0; padding: 5px 12px; font-size: 12px; background: var(--panel); color: var(--text); border: 1px solid var(--card-border); }
+.tts-preview-btn:hover { background: var(--accent); border-color: var(--accent); }
 {% endblock %}
 
 {% block body %}
@@ -96,7 +107,8 @@
       <a href="{{ url_for('guild_jobs', guild_id=guild_id) }}" class="{{ 'active' if active == 'jobs' else '' }}">🎭 직업 선택</a>
       <a href="{{ url_for('guild_announcements', guild_id=guild_id) }}" class="{{ 'active' if active == 'announcements' else '' }}">📢 공지사항</a>
       <a href="{{ url_for('guild_rules', guild_id=guild_id) }}" class="{{ 'active' if active == 'rules' else '' }}">📜 길드 규칙</a>
-      <a href="{{ url_for('guild_hub', guild_id=guild_id) }}" class="{{ 'active' if active == 'hub' else '' }}">🔊 파티모집 채널</a>
+      <a href="{{ url_for('guild_hub', guild_id=guild_id) }}" class="{{ 'active' if active == 'hub' else '' }}">🔊 음성 채널 자동 생성</a>
+      <a href="{{ url_for('guild_tts', guild_id=guild_id) }}" class="{{ 'active' if active == 'tts' else '' }}">🗣️ TTS</a>
       <a href="{{ url_for('guild_ranks', guild_id=guild_id) }}" class="{{ 'active' if active == 'ranks' else '' }}">👑 길드 직급</a>
       <a href="{{ url_for('guild_members', guild_id=guild_id) }}" class="{{ 'active' if active == 'members' else '' }}">🧑‍🤝‍🧑 역할 부여</a>
     </nav>

@@ -29,11 +29,14 @@ data/settings.json에 저장된다. 실행 중인 봇(main.py)이 그 값을 계
 """
 from __future__ import annotations
 
+import asyncio
+import io
 import os
 import sys
 
+import edge_tts
 from dotenv import load_dotenv
-from flask import Flask, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, Response, redirect, render_template, request, send_from_directory, session, url_for
 
 # "python web/app.py"로 실행하면 파이썬이 기본적으로 web/ 폴더만 찾다보니, 한 단계
 # 위에 있는 core/ 폴더(core/discord_api.py, core/settings_store.py)를 못 찾아서
@@ -62,6 +65,15 @@ GUILD_RANKS = ["길드마스터", "부길드장", "길드원", "신입길드원"
 # 매번 파일을 다시 올리지 않고 여기서 골라 쓸 수 있게 한다 (아래 "내장 이미지" 탭).
 IMG_DIR = os.path.join(PROJECT_ROOT, "img")
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+
+# 마이크로소프트 엣지 TTS의 한국어 목소리 목록 (edge_tts.list_voices()로 확인한 값).
+# 새 목소리가 추가되면 여기 목록도 같이 늘려주면 된다. 목록에 없는 목소리를 쓰고
+# 싶으면 페이지의 "직접 입력" 칸에 정확한 이름을 적으면 된다.
+TTS_VOICES = [
+    {"id": "ko-KR-SunHiNeural", "label": "선히 (여성)"},
+    {"id": "ko-KR-InJoonNeural", "label": "인준 (남성)"},
+    {"id": "ko-KR-HyunsuMultilingualNeural", "label": "현수 (남성, 다국어)"},
+]
 
 
 def _list_builtin_images() -> list[str]:
@@ -509,6 +521,55 @@ def delete_voice_hub(guild_id):
         settings_store.update_guild_settings(guild_id, voice_hubs=voice_hubs)
 
     return redirect(url_for("guild_hub", guild_id=guild_id))
+
+
+@app.route("/guild/<int:guild_id>/tts", methods=["GET", "POST"])
+def guild_tts(guild_id):
+    """카톡 스타일 TTS 설정. 지정한 텍스트채널에 쓴 글을, 글쓴이가 있는 음성채널에서
+    읽어준다 (실제 읽기는 main.py의 cogs/tts.py가 실시간으로 감시해서 처리한다)."""
+    if request.method == "POST":
+        channel_id = request.form.get("channel_id")
+        voice = (request.form.get("custom_voice") or "").strip() or request.form.get("voice") or ""
+        settings_store.update_guild_settings(
+            guild_id,
+            tts={"channel_id": int(channel_id) if channel_id else None, "voice": voice or None},
+        )
+        return redirect(url_for("guild_tts", guild_id=guild_id))
+
+    tts = settings_store.get_guild_settings(guild_id).get("tts", {})
+    return render_template(
+        "tts.html",
+        guild_id=guild_id,
+        active="tts",
+        page_title="🗣️ TTS",
+        page_desc="지정한 채널에 쓴 글을, 글쓴이가 들어가있는 음성채널에서 읽어줘요 (카톡 스타일).",
+        text_channels=_channels(guild_id)["text_channels"],
+        tts=tts,
+        tts_voices=TTS_VOICES,
+    )
+
+
+@app.route("/guild/<int:guild_id>/tts/preview")
+def tts_preview(guild_id):
+    """목소리를 미리 들어볼 수 있게, 짧은 예시 문장을 그 자리에서 mp3로 만들어 돌려준다.
+    디스코드와는 상관없이 브라우저에서 바로 재생해볼 수 있다."""
+    voice = request.args.get("voice") or "ko-KR-SunHiNeural"
+    sample_text = request.args.get("text") or "안녕하세요! 이 목소리로 채팅 내용을 읽어드릴게요."
+
+    async def _synthesize() -> bytes:
+        buf = bytearray()
+        communicate = edge_tts.Communicate(sample_text, voice)
+        async for chunk in communicate.stream():
+            if chunk["type"] == "audio":
+                buf.extend(chunk["data"])
+        return bytes(buf)
+
+    try:
+        audio_bytes = asyncio.run(_synthesize())
+    except Exception as e:
+        return f"미리듣기를 만들지 못했어요: {e}", 500
+
+    return Response(io.BytesIO(audio_bytes), mimetype="audio/mpeg")
 
 
 @app.route("/guild/<int:guild_id>/ranks", methods=["GET", "POST"])

@@ -30,6 +30,7 @@
       {"id": 556, "name_template": "자유 음성방 {n}", "counter": 1}
     ],
     "temp_voice_channel_ids": [555, 666],
+    "tts": {"channel_id": 777, "voice": "ko-KR-SunHiNeural"},
     "bot_log_channel_id": 999,
     "last_announced_version": "2026-09-14"
   }

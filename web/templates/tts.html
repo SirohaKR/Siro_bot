@@ -1,0 +1,72 @@
+{% extends "guild_shell.html" %}
+{% block section %}
+<div class="card">
+  <p class="desc" style="margin-bottom:18px;">
+    아래 채널에 글을 쓰면, 글쓴이가 지금 들어가있는 음성채널에서 봇이 그 내용을
+    읽어줍니다 (카톡 채팅을 소리로 읽어주는 것과 같은 방식). 음성채널에 없는 상태로
+    쓰면 그냥 무시돼요.
+  </p>
+
+  <form method="post">
+    <label>TTS로 읽을 채널</label>
+    <select name="channel_id" required>
+      <option value="">(사용 안 함)</option>
+      {% for c in text_channels %}
+      <option value="{{ c.id }}" {% if tts.channel_id == c.id|int %}selected{% endif %}>#{{ c.name }}</option>
+      {% endfor %}
+    </select>
+
+    <label style="margin-top:18px;">목소리 고르기 — 눌러서 먼저 들어보세요</label>
+    <div class="tts-voice-list">
+      {% for v in tts_voices %}
+      <label class="tts-voice-row">
+        <input type="radio" name="voice" value="{{ v.id }}" {% if tts.voice == v.id or (not tts.voice and loop.first) %}checked{% endif %}>
+        <span>{{ v.label }}</span>
+        <button type="button" class="tts-preview-btn" data-voice="{{ v.id }}">▶️ 미리듣기</button>
+      </label>
+      {% endfor %}
+    </div>
+
+    <label style="margin-top:14px;">직접 입력 (선택 — 위 목록에 없는 목소리를 쓰고 싶을 때만)</label>
+    <div class="row">
+      <div>
+        <input type="text" name="custom_voice" id="custom-voice-input" placeholder="예: ko-KR-InJoonNeural"
+               value="{% if tts.voice and tts.voice not in tts_voices|map(attribute='id')|list %}{{ tts.voice }}{% endif %}">
+      </div>
+      <div style="flex:0;">
+        <button type="button" class="tts-preview-btn" id="custom-voice-preview" style="margin-top:0;">▶️ 미리듣기</button>
+      </div>
+    </div>
+    <p class="desc" style="margin-top:4px;">
+      마이크로소프트 엣지 TTS 목소리 이름을 그대로 적으면 됩니다. 채워두면 위에서
+      고른 목소리 대신 이게 우선 적용돼요.
+    </p>
+
+    <audio id="tts-preview-player" style="display:none;"></audio>
+
+    <button type="submit">💾 TTS 설정 저장</button>
+  </form>
+</div>
+
+<script>
+  (function () {
+    const player = document.getElementById("tts-preview-player");
+
+    function playPreview(voice) {
+      if (!voice) return;
+      player.src = "{{ url_for('tts_preview', guild_id=guild_id) }}?voice=" + encodeURIComponent(voice);
+      player.play();
+    }
+
+    document.querySelectorAll(".tts-preview-btn[data-voice]").forEach(function (btn) {
+      btn.addEventListener("click", function () { playPreview(btn.dataset.voice); });
+    });
+
+    const customBtn = document.getElementById("custom-voice-preview");
+    const customInput = document.getElementById("custom-voice-input");
+    if (customBtn) {
+      customBtn.addEventListener("click", function () { playPreview(customInput.value.trim()); });
+    }
+  })();
+</script>
+{% endblock %}
