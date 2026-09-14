@@ -46,6 +46,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from core import discord_api, settings_store  # noqa: E402
+from core.tts_voices import TTS_VOICES  # noqa: E402
 
 load_dotenv()
 
@@ -66,14 +67,9 @@ GUILD_RANKS = ["길드마스터", "부길드장", "길드원", "신입길드원"
 IMG_DIR = os.path.join(PROJECT_ROOT, "img")
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 
-# 마이크로소프트 엣지 TTS의 한국어 목소리 목록 (edge_tts.list_voices()로 확인한 값).
-# 새 목소리가 추가되면 여기 목록도 같이 늘려주면 된다. 목록에 없는 목소리를 쓰고
-# 싶으면 페이지의 "직접 입력" 칸에 정확한 이름을 적으면 된다.
-TTS_VOICES = [
-    {"id": "ko-KR-SunHiNeural", "label": "선히 (여성)"},
-    {"id": "ko-KR-InJoonNeural", "label": "인준 (남성)"},
-    {"id": "ko-KR-HyunsuMultilingualNeural", "label": "현수 (남성, 다국어)"},
-]
+# TTS 목소리 목록은 core/tts_voices.py에 모아뒀다 (cogs/tts.py의 "/목소리설정"
+# 명령어와 같은 목록을 공유해서 쓰기 위함). 목록에 없는 목소리를 쓰고 싶으면
+# 페이지의 "직접 입력" 칸에 정확한 이름을 적으면 된다.
 
 
 def _list_builtin_images() -> list[str]:

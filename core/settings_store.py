@@ -34,6 +34,7 @@
       {"channel_id": 778, "hub_id": 555, "number": 2}
     ],
     "tts": {"channel_id": 777, "voice": "ko-KR-SunHiNeural"},
+    "tts_user_voices": {"888(유저ID)": "ko-KR-InJoonNeural"},
     "bot_log_channel_id": 999,
     "last_announced_version": "2026-09-14"
   }

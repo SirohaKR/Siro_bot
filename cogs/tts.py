@@ -2,9 +2,11 @@
 """
 텍스트채널에 쓴 글을 그 사람이 있는 음성채널에서 소리로 읽어주는 Cog (카톡 스타일 TTS).
 
-"어느 텍스트채널을 TTS용으로 쓸지, 어떤 목소리를 쓸지"는 웹 설정 페이지(web/app.py)의
-"🗣️ TTS" 페이지에서 정한다. 이 파일은 그 채널에 올라온 메시지를 감시해서, 글쓴이가
-지금 들어가있는 음성채널에 봇을 데려가 읽어주는 실제 동작만 한다.
+"어느 텍스트채널을 TTS용으로 쓸지, 어떤 목소리를 기본으로 쓸지"는 웹 설정 페이지
+(web/app.py)의 "🗣️ TTS" 페이지에서 관리자가 정한다. 그와 별개로, 길드원 각자가
+"/목소리설정" 명령어로 자기 메시지를 읽을 때만 쓸 개인 목소리를 정할 수도 있다
+(개인 설정이 없으면 서버 기본값을 쓴다). 이 파일은 실제로 채널을 감시해서 읽어주는
+동작과, 그 개인 설정 명령어를 담당한다.
 
 여러 메시지가 짧은 시간에 연달아 올라와도 소리가 겹치지 않도록, 서버(길드)마다
 읽어야 할 메시지를 큐에 쌓아두고 백그라운드 작업이 하나씩 순서대로 재생한다.
@@ -17,12 +19,14 @@ import tempfile
 
 import discord
 import edge_tts
+from discord import app_commands
 from discord.ext import commands
 
-from core.settings_store import get_guild_settings
+from core.settings_store import get_guild_settings, update_guild_settings
+from core.tts_voices import DEFAULT_VOICE, TTS_VOICES
 
 MAX_TEXT_LENGTH = 300  # 너무 긴 메시지가 음성채널을 오래 독점하지 않도록 자른다.
-DEFAULT_VOICE = "ko-KR-SunHiNeural"
+USE_SERVER_DEFAULT = "__default__"  # "/목소리설정"에서 "서버 기본값으로" 선택지의 값.
 
 
 class Tts(commands.Cog):
@@ -94,8 +98,35 @@ class Tts(commands.Cog):
         if voice_state is None or voice_state.channel is None:
             return  # 음성채널에 없으면 읽어줄 곳이 없으니 무시.
 
-        voice_name = tts.get("voice") or DEFAULT_VOICE
+        # 개인 목소리 설정("/목소리설정")이 있으면 그걸 우선 쓰고, 없으면 서버 기본값을 쓴다.
+        user_voices: dict = settings.get("tts_user_voices", {})
+        voice_name = user_voices.get(str(message.author.id)) or tts.get("voice") or DEFAULT_VOICE
         await self._queue_for(message.guild.id).put((voice_state.channel, text[:MAX_TEXT_LENGTH], voice_name))
+
+    @app_commands.command(name="목소리설정", description="TTS가 내 메시지를 읽어줄 때 쓸 목소리를 개인적으로 정합니다.")
+    @app_commands.choices(
+        voice=[app_commands.Choice(name=v["label"], value=v["id"]) for v in TTS_VOICES]
+        + [app_commands.Choice(name="서버 기본값으로", value=USE_SERVER_DEFAULT)]
+    )
+    async def set_my_voice(self, interaction: discord.Interaction, voice: app_commands.Choice[str]):
+        if interaction.guild is None:
+            await interaction.response.send_message("⚠️ 서버 안에서만 쓸 수 있는 명령어예요.", ephemeral=True)
+            return
+
+        settings = get_guild_settings(interaction.guild.id)
+        user_voices: dict = settings.get("tts_user_voices", {})
+
+        if voice.value == USE_SERVER_DEFAULT:
+            user_voices.pop(str(interaction.user.id), None)
+            update_guild_settings(interaction.guild.id, tts_user_voices=user_voices)
+            await interaction.response.send_message("✅ 서버 기본 목소리로 되돌렸어요.", ephemeral=True)
+            return
+
+        user_voices[str(interaction.user.id)] = voice.value
+        update_guild_settings(interaction.guild.id, tts_user_voices=user_voices)
+        await interaction.response.send_message(
+            f"✅ 앞으로 제 메시지는 '{voice.name}' 목소리로 읽어줄게요.", ephemeral=True
+        )
 
     @commands.Cog.listener()
     async def on_voice_state_update(

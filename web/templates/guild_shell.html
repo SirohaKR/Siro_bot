@@ -85,7 +85,10 @@
 .ip-crop-status { font-size: 11px; }
 
 /* TTS 목소리 목록 */
-.tts-voice-list { margin-top: 6px; }
+.tts-voice-list {
+  margin-top: 6px; max-height: 320px; overflow-y: auto;
+  border: 1px solid var(--card-border); border-radius: 8px; padding: 0 8px;
+}
 .tts-voice-row {
   display: flex; align-items: center; gap: 10px; padding: 8px 4px;
   border-bottom: 1px solid var(--card-border); font-size: 13px; cursor: pointer;
