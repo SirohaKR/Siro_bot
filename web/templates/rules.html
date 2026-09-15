@@ -25,3 +25,10 @@
   </form>
 </div>
 {% endblock %}
+
+{% block preview %}
+{% set preview_id = "rules" %}
+{% set title_selector = '[name="title"]' %}
+{% set body_selector = '[name="body"]' %}
+{% include "_message_preview.html" %}
+{% endblock %}

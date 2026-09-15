@@ -22,10 +22,46 @@
 .sidebar form { margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--card-border); }
 .sidebar form button { width: 100%; margin-top: 0; background: var(--card); color: var(--muted); }
 .sidebar form button:hover { background: var(--danger); color: white; }
-.content { flex: 1; min-width: 0; padding: 32px 32px 64px; max-width: 780px; }
-.content > .card { margin-bottom: 20px; }
+.content-wrap { flex: 1; min-width: 0; display: flex; align-items: flex-start; gap: 28px; padding: 32px 32px 64px; max-width: 1100px; }
+.content-main { flex: 1; min-width: 0; max-width: 700px; }
+.content-main > .card { margin-bottom: 20px; }
 .page-title { margin: 0 0 6px; font-size: 22px; }
 .page-desc { margin: 0 0 22px; font-size: 13px; color: var(--muted); }
+
+/* 오른쪽 실시간 미리보기 패널 (제목/내용/이미지 입력폼이 있는 페이지에서만 씀) */
+.content-preview { width: 320px; flex-shrink: 0; position: sticky; top: 24px; }
+.content-preview-label { font-size: 12px; color: var(--muted); font-weight: 600; margin-bottom: 8px; }
+.discord-mock {
+  background: #313338; border-radius: 10px; padding: 14px; display: flex; gap: 10px;
+  font-family: "Malgun Gothic", sans-serif; word-break: break-word;
+}
+.discord-mock-avatar {
+  width: 38px; height: 38px; border-radius: 50%; background: var(--accent);
+  display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
+}
+.discord-mock-main { min-width: 0; flex: 1; }
+.discord-mock-header { display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px; flex-wrap: wrap; }
+.discord-mock-name { color: #fff; font-weight: 600; font-size: 14px; }
+.discord-mock-bot-tag {
+  background: var(--accent); color: #fff; font-size: 10px; font-weight: 700;
+  padding: 1px 4px; border-radius: 3px; line-height: 1.4;
+}
+.discord-mock-time { color: #949ba4; font-size: 11px; }
+.discord-mock-embed {
+  border-left: 4px solid var(--accent); background: #2b2d31; border-radius: 4px;
+  padding: 10px 12px; margin-top: 2px; max-width: 100%;
+}
+.discord-mock-embed-title { color: #fff; font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+.discord-mock-embed-desc { color: #dbdee1; font-size: 13px; white-space: pre-wrap; line-height: 1.5; }
+.discord-mock-embed-image { max-width: 100%; max-height: 220px; border-radius: 4px; margin-top: 8px; display: block; object-fit: cover; }
+.discord-mock-button {
+  display: inline-block; margin-top: 10px; background: #4e5058; color: #fff;
+  font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 4px;
+}
+@media (max-width: 1080px) {
+  .content-wrap { flex-direction: column; }
+  .content-preview { width: 100%; position: static; }
+}
 .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .status-card {
   display: block; text-decoration: none; color: inherit;
@@ -122,10 +158,13 @@
     {% endif %}
   </aside>
 
-  <main class="content">
-    <h1 class="page-title">{{ page_title }}</h1>
-    {% if page_desc %}<p class="page-desc">{{ page_desc }}</p>{% endif %}
-    {% block section %}{% endblock %}
+  <main class="content-wrap">
+    <div class="content-main">
+      <h1 class="page-title">{{ page_title }}</h1>
+      {% if page_desc %}<p class="page-desc">{{ page_desc }}</p>{% endif %}
+      {% block section %}{% endblock %}
+    </div>
+    {% block preview %}{% endblock %}
   </main>
 </div>
 
@@ -156,6 +195,9 @@
       const dt = new DataTransfer();
       dt.items.add(file);
       finalInput.files = dt.files;
+      // 오른쪽에 미리보기 패널(_message_preview.html)이 있으면, 방금 고른 파일로
+      // 이미지 미리보기도 같이 갱신되도록 알려준다.
+      root.dispatchEvent(new CustomEvent("image-picker:change", { detail: { url: URL.createObjectURL(file) } }));
     }
 
     function loadImage(file, isOriginal, statusText) {
@@ -179,6 +221,8 @@
           finalInput.value = "";
           cropWrap.hidden = true;
           originalFile = null;
+          // 미리보기 패널한테 "파일은 없어졌으니 URL 입력칸을 대신 봐라"라고 알려준다.
+          root.dispatchEvent(new CustomEvent("image-picker:change", { detail: {} }));
         }
       });
     });
