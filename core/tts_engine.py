@@ -18,6 +18,7 @@ import os
 
 import edge_tts
 
+from core.chat_text import normalize_for_tts
 from core.tts_voices import TTS_VOICES
 
 _VOICE_LOOKUP = {v["id"]: v for v in TTS_VOICES}
@@ -49,6 +50,7 @@ async def _synthesize_edge(text: str, voice_id: str) -> bytes:
 
 async def synthesize(text: str, voice_id: str) -> bytes:
     """목소리 ID 하나로 mp3 오디오 바이트를 만들어 돌려준다."""
+    text = normalize_for_tts(text)
     info = _VOICE_LOOKUP.get(voice_id)
 
     if info and info.get("engine") == "polly":
