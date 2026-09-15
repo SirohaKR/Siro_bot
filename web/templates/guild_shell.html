@@ -120,6 +120,34 @@
 .ip-crop-actions .ip-crop-reset { background: var(--card); color: var(--muted); }
 .ip-crop-status { font-size: 11px; }
 
+/* 글 꾸미기 툴바 (_markdown_toolbar.html) */
+.md-toolbar { display: flex; gap: 3px; margin: 8px 0 -1px; flex-wrap: wrap; }
+.md-toolbar button {
+  margin-top: 0; padding: 5px 10px; font-size: 12px; font-weight: 700;
+  background: var(--panel); color: var(--text); border: 1px solid var(--card-border);
+  border-bottom: none; border-radius: 6px 6px 0 0; cursor: pointer; min-width: 30px;
+}
+.md-toolbar button:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.md-toolbar-sep { width: 1px; background: var(--card-border); margin: 4px 2px; }
+
+/* 미리보기 안에서 마크다운을 실제 디스코드처럼 렌더링할 때 쓰는 스타일 */
+.discord-mock-embed-desc .md-h1 { font-size: 18px; font-weight: 800; margin: 6px 0 3px; color: #fff; }
+.discord-mock-embed-desc .md-h2 { font-size: 16px; font-weight: 700; margin: 5px 0 3px; color: #fff; }
+.discord-mock-embed-desc .md-h3 { font-size: 14px; font-weight: 700; margin: 4px 0 2px; color: #fff; }
+.discord-mock-embed-desc .md-quote {
+  border-left: 3px solid #4e5058; padding-left: 8px; margin: 3px 0; color: #b5bac1;
+}
+.discord-mock-embed-desc .md-li { margin: 1px 0 1px 4px; }
+.discord-mock-embed-desc code {
+  background: #1e1f22; padding: 1px 4px; border-radius: 3px;
+  font-family: "Consolas", monospace; font-size: 12px;
+}
+.discord-mock-embed-desc pre {
+  background: #1e1f22; padding: 8px; border-radius: 4px; margin: 4px 0; overflow-x: auto;
+}
+.discord-mock-embed-desc pre code { background: none; padding: 0; }
+.discord-mock-embed-desc a { color: #00a8fc; text-decoration: none; }
+
 /* TTS 목소리 목록 */
 .tts-voice-list {
   margin-top: 6px; max-height: 320px; overflow-y: auto;
@@ -136,6 +164,78 @@
 {% endblock %}
 
 {% block body %}
+<script>
+  // 디스코드가 알아보는 마크다운 문법 중 자주 쓰는 것만 미리보기용으로 간단히
+  // HTML로 바꿔주는 함수. 완벽한 마크다운 파서는 아니고, 미리보기가 실제 디스코드
+  // 모습이랑 비슷하게 보이는 정도만 목표로 한다. _message_preview.html이 페이지
+  // 맨 위쪽에서 곧바로 이 함수를 부르기 때문에, 이 <script>는 반드시 본문(shell)보다
+  // 앞에 있어야 한다 (뒤에 두면 아직 정의되기 전이라 오류가 난다).
+  function escapeHtml(s) {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function inlineMarkdown(s) {
+    return s
+      .replace(/`([^`]+)`/g, "<code>$1</code>")
+      .replace(/\*\*\*([^*]+)\*\*\*/g, "<strong><em>$1</em></strong>")
+      .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+      .replace(/__([^_]+)__/g, "<u>$1</u>")
+      .replace(/~~([^~]+)~~/g, "<s>$1</s>")
+      .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+      .replace(/(^|[^\w])_([^_]+)_/g, "$1<em>$2</em>")
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  }
+
+  function renderDiscordMarkdown(raw) {
+    const lines = (raw || "").split("\n");
+    let html = "";
+    let inCodeBlock = false;
+    let codeBuf = [];
+
+    for (const rawLine of lines) {
+      if (rawLine.trim().startsWith("```")) {
+        if (!inCodeBlock) {
+          inCodeBlock = true;
+          codeBuf = [];
+        } else {
+          inCodeBlock = false;
+          html += "<pre><code>" + escapeHtml(codeBuf.join("\n")) + "</code></pre>";
+        }
+        continue;
+      }
+      if (inCodeBlock) {
+        codeBuf.push(rawLine);
+        continue;
+      }
+
+      const line = escapeHtml(rawLine);
+      const headerMatch = line.match(/^(#{1,3})\s+(.*)$/);
+      if (headerMatch) {
+        html += '<div class="md-h' + headerMatch[1].length + '">' + inlineMarkdown(headerMatch[2]) + "</div>";
+        continue;
+      }
+      if (/^&gt;\s?/.test(line)) {
+        html += '<div class="md-quote">' + inlineMarkdown(line.replace(/^&gt;\s?/, "")) + "</div>";
+        continue;
+      }
+      if (/^[-*]\s+/.test(line)) {
+        html += '<div class="md-li">• ' + inlineMarkdown(line.replace(/^[-*]\s+/, "")) + "</div>";
+        continue;
+      }
+      const numMatch = line.match(/^(\d+\.)\s+(.*)$/);
+      if (numMatch) {
+        html += '<div class="md-li">' + numMatch[1] + " " + inlineMarkdown(numMatch[2]) + "</div>";
+        continue;
+      }
+      if (line.trim() === "") {
+        html += "<br>";
+        continue;
+      }
+      html += "<div>" + inlineMarkdown(line) + "</div>";
+    }
+    return html;
+  }
+</script>
 <div class="shell">
   <aside class="sidebar">
     <div class="brand">🐾 레일라</div>
@@ -143,7 +243,7 @@
       <a href="{{ url_for('guild_page', guild_id=guild_id) }}" class="{{ 'active' if active == 'dashboard' else '' }}">🏠 대시보드</a>
       <a href="{{ url_for('guild_entrance', guild_id=guild_id) }}" class="{{ 'active' if active == 'entrance' else '' }}">🚪 입장 안내</a>
       <a href="{{ url_for('guild_verification', guild_id=guild_id) }}" class="{{ 'active' if active == 'verification' else '' }}">🔑 캐릭터 인증</a>
-      <a href="{{ url_for('guild_jobs', guild_id=guild_id) }}" class="{{ 'active' if active == 'jobs' else '' }}">🎭 직업 선택</a>
+      <a href="{{ url_for('guild_jobs', guild_id=guild_id) }}" class="{{ 'active' if active == 'jobs' else '' }}">🎭 역할 선택</a>
       <a href="{{ url_for('guild_announcements', guild_id=guild_id) }}" class="{{ 'active' if active == 'announcements' else '' }}">📢 공지사항</a>
       <a href="{{ url_for('guild_rules', guild_id=guild_id) }}" class="{{ 'active' if active == 'rules' else '' }}">📜 길드 규칙</a>
       <a href="{{ url_for('guild_hub', guild_id=guild_id) }}" class="{{ 'active' if active == 'hub' else '' }}">🔊 음성 채널 자동 생성</a>
@@ -330,6 +430,79 @@
         if (originalFile) loadImage(originalFile, true);
       });
     }
+  });
+</script>
+
+<script>
+  // 글 꾸미기 툴바(_markdown_toolbar.html) 공통 동작. 버튼을 누르면 연결된
+  // textarea의 선택 영역에 마크다운 기호를 붙이거나, 선택한 줄 앞에 붙인다.
+  // (renderDiscordMarkdown 등 마크다운 렌더링 함수는 이 파일 맨 위, <div class="shell">
+  // 앞에 정의되어 있다 — _message_preview.html이 페이지 로드 즉시 그 함수를 부르기
+  // 때문에, 본문보다 늦게 정의되면 안 된다)
+  document.querySelectorAll(".md-toolbar").forEach(function (toolbar) {
+    const textarea = document.querySelector(toolbar.dataset.target);
+    if (!textarea) return;
+
+    function notifyChange() {
+      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+
+    function wrapSelection(before, after) {
+      if (after === undefined) after = before;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selected = textarea.value.slice(start, end) || "텍스트";
+      textarea.focus();
+      textarea.setRangeText(before + selected + after, start, end, "select");
+      notifyChange();
+    }
+
+    function togglePrefixOnLines(prefix) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const value = textarea.value;
+      const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+      let lineEnd = value.indexOf("\n", end === start ? end : end - 1);
+      if (lineEnd === -1) lineEnd = value.length;
+
+      const block = value.slice(lineStart, lineEnd);
+      const lines = block.split("\n");
+      const alreadyPrefixed = lines.every(function (l) { return l.startsWith(prefix); });
+      const newLines = lines.map(function (l) {
+        return alreadyPrefixed ? l.slice(prefix.length) : prefix + l;
+      });
+
+      textarea.focus();
+      textarea.setRangeText(newLines.join("\n"), lineStart, lineEnd, "select");
+      notifyChange();
+    }
+
+    function insertLink() {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const selected = textarea.value.slice(start, end) || "링크 텍스트";
+      textarea.focus();
+      textarea.setRangeText("[" + selected + "](URL)", start, end, "end");
+      notifyChange();
+    }
+
+    toolbar.querySelectorAll("button[data-md]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        switch (btn.dataset.md) {
+          case "bold": wrapSelection("**"); break;
+          case "italic": wrapSelection("*"); break;
+          case "underline": wrapSelection("__"); break;
+          case "strike": wrapSelection("~~"); break;
+          case "code": wrapSelection("`"); break;
+          case "h1": togglePrefixOnLines("# "); break;
+          case "h2": togglePrefixOnLines("## "); break;
+          case "h3": togglePrefixOnLines("### "); break;
+          case "quote": togglePrefixOnLines("> "); break;
+          case "list": togglePrefixOnLines("- "); break;
+          case "link": insertLink(); break;
+        }
+      });
+    });
   });
 </script>
 {% endblock %}

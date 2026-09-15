@@ -13,6 +13,8 @@
     <input type="text" name="title" placeholder="예: 🔑 캐릭터 인증" value="{{ verification.title or '' }}">
 
     <label>인증 안내 내용</label>
+    {% set target_selector = '[name="body"]' %}
+    {% include "_markdown_toolbar.html" %}
     <textarea name="body" rows="10" placeholder="예: 본인 캐릭터가 보이는 스크린샷을 이 채널에 올려주세요.">{{ verification.body or '' }}</textarea>
 
     <div class="row">

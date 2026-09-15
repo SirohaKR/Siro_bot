@@ -12,6 +12,8 @@
     <input type="text" name="title" placeholder="예: 📜 길드 규칙" value="{{ announcement.title or '' }}">
 
     <label>공지 내용</label>
+    {% set target_selector = '[name="body"]' %}
+    {% include "_markdown_toolbar.html" %}
     <textarea name="body" rows="14" placeholder="예: 1. 길드원 간 예의를 지켜주세요...">{{ announcement.body or '' }}</textarea>
 
     {% include "_image_picker.html" %}

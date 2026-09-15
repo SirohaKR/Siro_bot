@@ -1,21 +1,30 @@
 {% extends "guild_shell.html" %}
 {% block section %}
 <div class="card">
-  <p class="desc" style="margin-bottom:18px;">
-    먼저 공지로 올라갈 제목/내용/이미지를 써주세요. 그 아래에서 이모티콘과 역할을
-    원하는 만큼 추가/삭제하면, 게시할 때 공지 내용 밑에 그 목록이 자동으로 붙습니다.
+  <div class="card-title"><div class="card-icon">📝</div><h2>공지 작성</h2></div>
+  <p class="desc">
     길드원이 이모티콘을 누르면 역할이 붙고, 다른 이모티콘을 누르면 이전 것으로
     자동 교체됩니다. (캐릭터 인증과 달리 관리자 승인 없이 바로 부여되는 셀프 선택형이에요)
   </p>
 
   <label>공지 제목</label>
-  <input type="text" id="ann-title" placeholder="예: 🍁 직업을 선택해주세요"
+  <input type="text" id="ann-title" placeholder="예: 🍁 역할을 선택해주세요"
          value="{{ announcement_draft.title or '' }}">
 
   <label>공지 내용</label>
-  <textarea id="ann-body" rows="10" placeholder="예: 본인의 직업에 맞는 이모티콘을 눌러주세요!">{{ announcement_draft.body or '' }}</textarea>
+  {% set target_selector = "#ann-body" %}
+  {% include "_markdown_toolbar.html" %}
+  <textarea id="ann-body" rows="8" placeholder="예: 본인이 원하는 역할에 맞는 이모티콘을 눌러주세요!">{{ announcement_draft.body or '' }}</textarea>
+</div>
 
-  <table style="margin-top:18px;">
+<div class="card">
+  <div class="card-title"><div class="card-icon">🎭</div><h2>역할 목록</h2></div>
+  <p class="desc">
+    이모티콘과 역할을 원하는 만큼 추가/삭제하세요. 게시할 때 위 공지 내용 밑에
+    이 목록이 자동으로 붙습니다.
+  </p>
+
+  <table>
     {% for job in job_list %}
     <tr>
       <td style="width:36px;font-size:18px;">{{ job.emoji }}</td>
@@ -30,7 +39,7 @@
       </td>
     </tr>
     {% else %}
-    <tr><td colspan="4" class="tag">아직 추가된 직업이 없습니다. 아래에서 하나씩 추가해주세요.</td></tr>
+    <tr><td colspan="4" class="tag">아직 추가된 역할이 없습니다. 아래에서 하나씩 추가해주세요.</td></tr>
     {% endfor %}
   </table>
 
@@ -38,7 +47,7 @@
     <input type="hidden" name="title"><input type="hidden" name="body">
     <div class="row">
       <div>
-        <label>직업 이름</label>
+        <label>역할 이름</label>
         <input type="text" name="label" placeholder="예: 히어로" required>
       </div>
       <div>
@@ -56,9 +65,12 @@
     </div>
     <button type="submit">➕ 목록에 추가</button>
   </form>
+</div>
 
+<div class="card">
+  <div class="card-title"><div class="card-icon">📢</div><h2>게시</h2></div>
   <form method="post" action="{{ url_for('post_job_roles', guild_id=guild_id) }}" class="ann-carry"
-        enctype="multipart/form-data" style="margin-top:18px;border-top:1px solid var(--card-border);padding-top:14px;">
+        enctype="multipart/form-data">
     <input type="hidden" name="title"><input type="hidden" name="body">
 
     {% include "_image_picker.html" %}
@@ -92,5 +104,5 @@
 {% set title_selector = "#ann-title" %}
 {% set body_selector = "#ann-body" %}
 {% include "_message_preview.html" %}
-<p class="desc" style="margin-top:10px;">실제로 게시하면 이 아래에 지금 등록된 직업+이모티콘 목록이 자동으로 붙어요.</p>
+<p class="desc" style="margin-top:10px;">실제로 게시하면 이 아래에 지금 등록된 역할+이모티콘 목록이 자동으로 붙어요.</p>
 {% endblock %}

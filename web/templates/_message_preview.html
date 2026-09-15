@@ -43,8 +43,10 @@
     const previewImage = document.getElementById("{{ preview_id }}-preview-image");
 
     function renderText() {
+      // 임베드 제목은 디스코드에서 마크다운이 안 먹혀서 그냥 글자 그대로 보여준다.
       previewTitle.textContent = (titleEl && titleEl.value.trim()) || "(제목 없음)";
-      previewDesc.textContent = bodyEl ? bodyEl.value : "";
+      // 내용은 실제 디스코드처럼 마크다운(굵게/제목/목록 등)을 적용해서 보여준다.
+      previewDesc.innerHTML = bodyEl ? renderDiscordMarkdown(bodyEl.value) : "";
     }
     if (titleEl) titleEl.addEventListener("input", renderText);
     if (bodyEl) bodyEl.addEventListener("input", renderText);

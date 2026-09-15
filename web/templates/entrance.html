@@ -12,6 +12,8 @@
     <input type="text" name="title" placeholder="예: 👋 환영합니다!" value="{{ entrance.title or '' }}">
 
     <label>안내 내용</label>
+    {% set target_selector = '[name="body"]' %}
+    {% include "_markdown_toolbar.html" %}
     <textarea name="body" rows="10" placeholder="예: 아래 버튼을 눌러 캐릭터 인증을 진행해주세요.">{{ entrance.body or '' }}</textarea>
 
     {% include "_image_picker.html" %}
