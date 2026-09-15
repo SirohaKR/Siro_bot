@@ -6,8 +6,14 @@
     - body_selector: 내용 입력칸을 찾을 CSS 선택자
     - button_label (선택): 임베드 아래에 버튼 모양을 하나 더 보여주고 싶을 때 그 문구
       (예: 입장 안내 페이지의 "🔑 캐릭터 인증하러 가기" 버튼)
+    - extra_note (선택): 미리보기 밑에 한 줄 더 붙일 안내 문구
   이미지 미리보기는 _image_picker.html이 쏘는 "image-picker:change" 이벤트를 그대로
   받아서 자동으로 연동된다 — 페이지에서 따로 챙길 게 없다.
+
+  주의: 이 파셜의 최상위 요소는 <aside class="content-preview"> 하나뿐이어야 한다.
+  guild_shell.html에서 .content-wrap이 display:flex라서, 여기 바깥에 형제로
+  뭘 더 두면(문구든 뭐든) 그게 세 번째 flex 칸으로 취급되어 레이아웃이 깨진다
+  (실제로 겪은 버그라 남겨둠). 덧붙일 내용은 반드시 extra_note로 넘길 것.
 -->
 <aside class="content-preview">
   <div class="content-preview-label">📱 실제로 이렇게 올라가요 (실시간 미리보기)</div>
@@ -29,9 +35,11 @@
       {% endif %}
     </div>
   </div>
-</aside>
+  {% if extra_note %}
+  <p class="desc" style="margin-top:10px;">{{ extra_note }}</p>
+  {% endif %}
 
-<script>
+  <script>
   (function () {
     const titleSel = {{ title_selector|default("")|tojson }};
     const bodySel = {{ body_selector|default("")|tojson }};
@@ -73,4 +81,5 @@
       if (urlInput) urlInput.addEventListener("input", function () { renderImage(null); });
     }
   })();
-</script>
+  </script>
+</aside>
