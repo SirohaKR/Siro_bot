@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import io
 import os
+import secrets
 import sys
 
 from dotenv import load_dotenv
@@ -44,7 +45,7 @@ from flask import Flask, Response, jsonify, redirect, render_template, request, 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-from core import discord_api, settings_store  # noqa: E402
+from core import discord_api, discord_oauth, settings_store  # noqa: E402
 from core.tts_catalog import find_typecast_voice, list_typecast_voices, search_typecast_voices  # noqa: E402
 from core.tts_engine import synthesize  # noqa: E402
 from core.tts_voices import available_voices  # noqa: E402
@@ -119,9 +120,24 @@ ENTRANCE_BUTTON_COMPONENTS = [
 ]
 
 
+# 관리자 비밀번호 없이 들어올 수 있는 곳들. "내 목소리 설정"은 누구나 주소를 알면
+# 열 수 있는 오픈 페이지고, 그 안에서 본인 확인은 비밀번호 대신 디스코드 로그인
+# (oauth_*)으로 한다 — 그래서 관리자 세션(session["authed"])이 없어도 통과시킨다.
+PUBLIC_ENDPOINTS = (
+    "static",
+    "login",
+    "oauth_login",
+    "oauth_callback",
+    "oauth_logout",
+    "my_voice",
+    "my_voice_search_voices",
+    "my_voice_preview",
+)
+
+
 @app.before_request
 def require_auth():
-    if request.endpoint in ("static", "login"):
+    if request.endpoint in PUBLIC_ENDPOINTS:
         return None
     if session.get("authed"):
         return None
@@ -142,6 +158,105 @@ def login():
 def logout():
     session.clear()
     return redirect(url_for("login"))
+
+
+def _my_guild_id() -> int | None:
+    raw = os.getenv("MY_GUILD_ID")
+    return int(raw) if raw else None
+
+
+@app.route("/oauth/login")
+def oauth_login():
+    """"디스코드로 로그인" 버튼 → 디스코드 자체 로그인 화면으로 보낸다.
+
+    state 값은 CSRF 방지용 임시 토큰이다 — 세션에 저장해뒀다가, 콜백에서 돌아온
+    값이랑 같은지 확인해서, 이 로그인 시도가 내가 방금 시작한 게 맞는지 확인한다.
+    """
+    state = secrets.token_urlsafe(16)
+    session["oauth_state"] = state
+    session["oauth_next"] = request.args.get("next") or url_for("my_voice")
+    return redirect(discord_oauth.build_authorize_url(state))
+
+
+@app.route("/oauth/callback")
+def oauth_callback():
+    if not request.args.get("code") or request.args.get("state") != session.get("oauth_state"):
+        return "⚠️ 로그인 요청이 올바르지 않아요. 다시 시도해주세요.", 400
+
+    try:
+        user = discord_oauth.exchange_code_for_user(request.args["code"])
+    except Exception as e:
+        return f"⚠️ 디스코드 로그인에 실패했어요: {e}", 500
+
+    session.pop("oauth_state", None)
+    session["discord_user_id"] = int(user["id"])
+    return redirect(session.pop("oauth_next", None) or url_for("my_voice"))
+
+
+@app.route("/oauth/logout", methods=["POST"])
+def oauth_logout():
+    session.pop("discord_user_id", None)
+    return redirect(url_for("my_voice"))
+
+
+@app.route("/my-voice", methods=["GET", "POST"])
+def my_voice():
+    """누구나 주소를 알면 열 수 있는 "내 목소리 설정" 페이지. 디스코드로 로그인해야
+    본인 확인이 되고, 그 다음에도 실제로 이 길드 멤버여야만 목소리를 바꿀 수 있다."""
+    guild_id = _my_guild_id()
+    if not guild_id:
+        return "⚠️ 아직 서버가 설정되지 않았어요. (.env의 MY_GUILD_ID를 확인해주세요)", 500
+
+    user_id = session.get("discord_user_id")
+    if not user_id:
+        return render_template("my_voice.html", logged_in=False)
+
+    member = discord_api.get_member(guild_id, user_id)
+    if member is None:
+        return render_template("my_voice.html", logged_in=True, not_member=True)
+
+    settings = settings_store.get_guild_settings(guild_id)
+    user_voices: dict = settings.get("tts_user_voices", {})
+
+    if request.method == "POST":
+        voice = (request.form.get("voice") or "").strip()
+        if voice:
+            user_voices[str(user_id)] = voice
+        else:
+            user_voices.pop(str(user_id), None)  # 빈 값 = "서버 기본값 쓰기"로 되돌림
+        settings_store.update_guild_settings(guild_id, tts_user_voices=user_voices)
+        return redirect(url_for("my_voice"))
+
+    display_name = member.get("nick") or member["user"]["username"]
+    current_voice = user_voices.get(str(user_id))
+    curated_voices = _curated_tts_voices()
+    curated_ids = {v["id"] for v in curated_voices}
+
+    selected_catalog_voice = None
+    if current_voice and current_voice not in curated_ids and current_voice.startswith("typecast_id:"):
+        selected_catalog_voice = asyncio.run(find_typecast_voice(current_voice))
+
+    return render_template(
+        "my_voice.html",
+        logged_in=True,
+        not_member=False,
+        display_name=display_name,
+        tts_voices=curated_voices,
+        current_voice=current_voice,
+        selected_catalog_voice=selected_catalog_voice,
+    )
+
+
+@app.route("/my-voice/search-voices")
+def my_voice_search_voices():
+    return _search_voices_response(request.args.get("q", ""))
+
+
+@app.route("/my-voice/preview")
+def my_voice_preview():
+    voice = request.args.get("voice") or "ko-KR-SunHiNeural"
+    sample_text = request.args.get("text") or "안녕하세요! 이 목소리로 채팅 내용을 읽어드릴게요."
+    return _tts_preview_response(voice, sample_text)
 
 
 @app.route("/")
@@ -576,34 +691,39 @@ def guild_tts(guild_id):
     )
 
 
-@app.route("/guild/<int:guild_id>/tts/search-voices")
-def tts_search_voices(guild_id):
+def _search_voices_response(query: str):
     """타입캐스트 전체 목소리(약 600개)를 이름/성별/나이/용도로 검색한다.
 
-    추천 목록(14개 무료 + 서연 + 타입캐스트 7종)은 이미 페이지에 다 그려져 있으니
-    검색이 필요한 건 이 "전체 카탈로그"뿐이다. 검색어가 비어있으면 빈 목록을
-    돌려준다 (600개를 한 번에 다 그리면 느려지니, 뭘 찾는지 입력했을 때만 보여줌).
+    관리자 페이지("🗣️ TTS")와 "내 목소리 설정" 오픈 페이지가 같이 쓴다. 검색어가
+    비어있으면 빈 목록을 돌려준다 (600개를 한 번에 다 그리면 느려지니, 뭘 찾는지
+    입력했을 때만 보여줌).
     """
-    query = request.args.get("q", "")
     if not query.strip():
         return jsonify([])
     results = asyncio.run(search_typecast_voices(query, limit=30))
     return jsonify(results)
 
 
-@app.route("/guild/<int:guild_id>/tts/preview")
-def tts_preview(guild_id):
+def _tts_preview_response(voice: str, sample_text: str):
     """목소리를 미리 들어볼 수 있게, 짧은 예시 문장을 그 자리에서 mp3로 만들어 돌려준다.
     디스코드와는 상관없이 브라우저에서 바로 재생해볼 수 있다."""
-    voice = request.args.get("voice") or "ko-KR-SunHiNeural"
-    sample_text = request.args.get("text") or "안녕하세요! 이 목소리로 채팅 내용을 읽어드릴게요."
-
     try:
         audio_bytes = asyncio.run(synthesize(sample_text, voice))
     except Exception as e:
         return f"미리듣기를 만들지 못했어요: {e}", 500
-
     return Response(io.BytesIO(audio_bytes), mimetype="audio/mpeg")
+
+
+@app.route("/guild/<int:guild_id>/tts/search-voices")
+def tts_search_voices(guild_id):
+    return _search_voices_response(request.args.get("q", ""))
+
+
+@app.route("/guild/<int:guild_id>/tts/preview")
+def tts_preview(guild_id):
+    voice = request.args.get("voice") or "ko-KR-SunHiNeural"
+    sample_text = request.args.get("text") or "안녕하세요! 이 목소리로 채팅 내용을 읽어드릴게요."
+    return _tts_preview_response(voice, sample_text)
 
 
 @app.route("/guild/<int:guild_id>/ranks", methods=["GET", "POST"])

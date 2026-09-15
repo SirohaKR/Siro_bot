@@ -107,6 +107,20 @@
       font-size: 11px; color: var(--muted); background: var(--panel);
       display: inline-block; padding: 3px 9px; border-radius: 999px;
     }
+
+    /* TTS 목소리 목록 — 관리자 페이지("🗣️ TTS")와 "내 목소리 설정" 오픈 페이지가 같이 쓴다 */
+    .tts-voice-list {
+      margin-top: 6px; max-height: 320px; overflow-y: auto;
+      border: 1px solid var(--card-border); border-radius: 8px; padding: 0 8px;
+    }
+    .tts-voice-row {
+      display: flex; align-items: center; gap: 10px; padding: 8px 4px;
+      border-bottom: 1px solid var(--card-border); font-size: 13px; cursor: pointer;
+    }
+    .tts-voice-row:last-child { border-bottom: none; }
+    .tts-voice-row span { flex: 1; }
+    .tts-preview-btn { margin-top: 0; padding: 5px 12px; font-size: 12px; background: var(--panel); color: var(--text); border: 1px solid var(--card-border); }
+    .tts-preview-btn:hover { background: var(--accent); border-color: var(--accent); }
     {% block extra_style %}{% endblock %}
   </style>
 </head>

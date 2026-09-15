@@ -59,6 +59,20 @@ def get_members(guild_id: int, limit: int = 1000) -> list[dict]:
     return r.json()
 
 
+def get_member(guild_id: int, user_id: int) -> dict | None:
+    """특정 유저가 이 서버의 멤버인지 확인한다. 멤버가 아니면 None(404)을 돌려준다.
+
+    "내 목소리 설정" 오픈 페이지에서, 디스코드로 로그인한 사람이 실제로 이 길드
+    멤버인지 확인할 때 쓴다 (아무 디스코드 계정이나 로그인은 할 수 있지만, 길드원이
+    아니면 목소리를 못 바꾸게 막기 위함).
+    """
+    r = requests.get(f"{API_BASE}/guilds/{guild_id}/members/{user_id}", headers=_headers(), timeout=10)
+    if r.status_code == 404:
+        return None
+    r.raise_for_status()
+    return r.json()
+
+
 def create_voice_channel(guild_id: int, name: str, parent_id: int | None = None) -> dict:
     """음성채널을 새로 만든다. type=2가 음성채널을 뜻하는 디스코드 API 코드다."""
     payload: dict = {"name": name, "type": 2}
