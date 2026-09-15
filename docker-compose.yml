@@ -9,6 +9,10 @@ services:
     build: .
     container_name: sironyan-bot
     restart: unless-stopped
+    # TTS 음성(UDP)이 브릿지 네트워크의 NAT를 거치면서 조용히 유실되는 경우가 있어서,
+    # 이 컨테이너만 호스트 네트워크를 그대로 쓰게 한다. 포트를 직접 여는 서비스가
+    # 아니라서(디스코드로 나가는 연결만 함) 다른 서비스와 충돌할 일은 없다.
+    network_mode: "host"
     env_file:
       - .env
     volumes:
