@@ -18,12 +18,12 @@ import os
 import tempfile
 
 import discord
-import edge_tts
 from discord import app_commands
 from discord.ext import commands
 
 from core.settings_store import get_guild_settings, update_guild_settings
-from core.tts_voices import DEFAULT_VOICE, TTS_VOICES
+from core.tts_engine import synthesize
+from core.tts_voices import DEFAULT_VOICE, available_voices
 
 MAX_TEXT_LENGTH = 300  # 너무 긴 메시지가 음성채널을 오래 독점하지 않도록 자른다.
 USE_SERVER_DEFAULT = "__default__"  # "/목소리설정"에서 "서버 기본값으로" 선택지의 값.
@@ -64,7 +64,9 @@ class Tts(commands.Cog):
         fd, path = tempfile.mkstemp(suffix=".mp3")
         os.close(fd)
         try:
-            await edge_tts.Communicate(text, voice_name).save(path)
+            audio_bytes = await synthesize(text, voice_name)
+            with open(path, "wb") as f:
+                f.write(audio_bytes)
 
             done = asyncio.Event()
 
@@ -105,7 +107,7 @@ class Tts(commands.Cog):
 
     @app_commands.command(name="목소리설정", description="TTS가 내 메시지를 읽어줄 때 쓸 목소리를 개인적으로 정합니다.")
     @app_commands.choices(
-        voice=[app_commands.Choice(name=v["label"], value=v["id"]) for v in TTS_VOICES]
+        voice=[app_commands.Choice(name=v["label"], value=v["id"]) for v in available_voices()]
         + [app_commands.Choice(name="서버 기본값으로", value=USE_SERVER_DEFAULT)]
     )
     async def set_my_voice(self, interaction: discord.Interaction, voice: app_commands.Choice[str]):

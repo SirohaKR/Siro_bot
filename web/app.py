@@ -34,7 +34,6 @@ import io
 import os
 import sys
 
-import edge_tts
 from dotenv import load_dotenv
 from flask import Flask, Response, redirect, render_template, request, send_from_directory, session, url_for
 
@@ -46,7 +45,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from core import discord_api, settings_store  # noqa: E402
-from core.tts_voices import TTS_VOICES  # noqa: E402
+from core.tts_engine import synthesize  # noqa: E402
+from core.tts_voices import available_voices  # noqa: E402
 
 load_dotenv()
 
@@ -545,7 +545,7 @@ def guild_tts(guild_id):
         page_desc="지정한 채널에 쓴 글을, 글쓴이가 들어가있는 음성채널에서 읽어줘요 (카톡 스타일).",
         text_channels=_channels(guild_id)["text_channels"],
         tts=tts,
-        tts_voices=TTS_VOICES,
+        tts_voices=available_voices(),
     )
 
 
@@ -556,16 +556,8 @@ def tts_preview(guild_id):
     voice = request.args.get("voice") or "ko-KR-SunHiNeural"
     sample_text = request.args.get("text") or "안녕하세요! 이 목소리로 채팅 내용을 읽어드릴게요."
 
-    async def _synthesize() -> bytes:
-        buf = bytearray()
-        communicate = edge_tts.Communicate(sample_text, voice)
-        async for chunk in communicate.stream():
-            if chunk["type"] == "audio":
-                buf.extend(chunk["data"])
-        return bytes(buf)
-
     try:
-        audio_bytes = asyncio.run(_synthesize())
+        audio_bytes = asyncio.run(synthesize(sample_text, voice))
     except Exception as e:
         return f"미리듣기를 만들지 못했어요: {e}", 500
 
