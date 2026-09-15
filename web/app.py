@@ -35,7 +35,7 @@ import os
 import sys
 
 from dotenv import load_dotenv
-from flask import Flask, Response, redirect, render_template, request, send_from_directory, session, url_for
+from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 
 # "python web/app.py"로 실행하면 파이썬이 기본적으로 web/ 폴더만 찾다보니, 한 단계
 # 위에 있는 core/ 폴더(core/discord_api.py, core/settings_store.py)를 못 찾아서
@@ -45,6 +45,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from core import discord_api, settings_store  # noqa: E402
+from core.tts_catalog import find_typecast_voice, list_typecast_voices, search_typecast_voices  # noqa: E402
 from core.tts_engine import synthesize  # noqa: E402
 from core.tts_voices import available_voices  # noqa: E402
 
@@ -70,6 +71,26 @@ IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
 # TTS 목소리 목록은 core/tts_voices.py에 모아뒀다 (cogs/tts.py의 "/목소리설정"
 # 명령어와 같은 목록을 공유해서 쓰기 위함). 목록에 없는 목소리를 쓰고 싶으면
 # 페이지의 "직접 입력" 칸에 정확한 이름을 적으면 된다.
+
+
+def _curated_tts_voices() -> list[dict]:
+    """추천 목소리 목록(available_voices())에 타입캐스트 무료 미리듣기 주소를 붙여서
+    돌려준다. 이게 없으면 화면에서 "미리듣기"를 누를 때마다 유료 합성 API를 불러서
+    크레딧이 나간다 — 타입캐스트 목소리마다 준비된 무료 샘플(preview_url)을 대신 쓰면
+    미리듣기는 공짜다."""
+    catalog_by_name = {}
+    if os.getenv("TYPECAST_API_KEY"):
+        catalog_by_name = {v["name"]: v for v in asyncio.run(list_typecast_voices())}
+
+    voices = []
+    for v in available_voices():
+        entry = dict(v)
+        if entry.get("engine") == "typecast":
+            match = catalog_by_name.get(entry.get("typecast_name"))
+            if match:
+                entry["preview_url"] = match.get("preview_url")
+        voices.append(entry)
+    return voices
 
 
 def _list_builtin_images() -> list[str]:
@@ -537,6 +558,11 @@ def guild_tts(guild_id):
         return redirect(url_for("guild_tts", guild_id=guild_id))
 
     tts = settings_store.get_guild_settings(guild_id).get("tts", {})
+    curated_ids = {v["id"] for v in available_voices()}
+    selected_catalog_voice = None
+    if tts.get("voice") and tts["voice"] not in curated_ids and tts["voice"].startswith("typecast_id:"):
+        selected_catalog_voice = asyncio.run(find_typecast_voice(tts["voice"]))
+
     return render_template(
         "tts.html",
         guild_id=guild_id,
@@ -545,8 +571,24 @@ def guild_tts(guild_id):
         page_desc="지정한 채널에 쓴 글을, 글쓴이가 들어가있는 음성채널에서 읽어줘요 (카톡 스타일).",
         text_channels=_channels(guild_id)["text_channels"],
         tts=tts,
-        tts_voices=available_voices(),
+        tts_voices=_curated_tts_voices(),
+        selected_catalog_voice=selected_catalog_voice,
     )
+
+
+@app.route("/guild/<int:guild_id>/tts/search-voices")
+def tts_search_voices(guild_id):
+    """타입캐스트 전체 목소리(약 600개)를 이름/성별/나이/용도로 검색한다.
+
+    추천 목록(14개 무료 + 서연 + 타입캐스트 7종)은 이미 페이지에 다 그려져 있으니
+    검색이 필요한 건 이 "전체 카탈로그"뿐이다. 검색어가 비어있으면 빈 목록을
+    돌려준다 (600개를 한 번에 다 그리면 느려지니, 뭘 찾는지 입력했을 때만 보여줌).
+    """
+    query = request.args.get("q", "")
+    if not query.strip():
+        return jsonify([])
+    results = asyncio.run(search_typecast_voices(query, limit=30))
+    return jsonify(results)
 
 
 @app.route("/guild/<int:guild_id>/tts/preview")

@@ -2,11 +2,15 @@
 """
 TTS 합성을 담당하는 공용 코드.
 
-목소리 ID 하나만 넘기면, core/tts_voices.py에 적힌 engine 값을 보고 무료
-edge-tts / 유료 AWS Polly / 유료 타입캐스트 중 알맞은 걸로 합성해서 mp3
+목소리 ID 하나만 넘기면, ID의 접두사(polly:, typecast:, typecast_id:)를 보고
+무료 edge-tts / 유료 AWS Polly / 유료 타입캐스트 중 알맞은 걸로 합성해서 mp3
 오디오 바이트를 돌려준다. web/app.py(미리듣기 버튼)와 cogs/tts.py(실제
 음성채널 재생)가 둘 다 이 모듈의 synthesize()만 부르면 되게 만들어서,
 엔진을 하나 더 늘려도 이 파일만 고치면 되게 했다.
+
+ID가 접두사로 자기 엔진을 스스로 말해주는 방식이라서(core/tts_voices.py의
+추천 목록이든, core/tts_catalog.py가 실행 중에 API로 받아온 타입캐스트
+전체 목소리 600개 중 하나든), 어느 쪽에서 온 ID든 이 함수 하나로 다 처리된다.
 
 AWS Polly는 boto3(동기 라이브러리)라서, 봇의 이벤트 루프를 막지 않도록
 run_in_executor로 별도 스레드에서 돌린다. 타입캐스트는 REST API라
@@ -21,9 +25,7 @@ import aiohttp
 import edge_tts
 
 from core.chat_text import normalize_for_tts
-from core.tts_voices import TTS_VOICES
 
-_VOICE_LOOKUP = {v["id"]: v for v in TTS_VOICES}
 _polly_client = None
 
 _TYPECAST_API_BASE = "https://api.typecast.ai"
@@ -79,16 +81,14 @@ async def _resolve_typecast_voice_id(name: str) -> str:
     raise ValueError(f"타입캐스트에서 '{name}' 목소리를 찾지 못했어요.")
 
 
-async def _synthesize_typecast(text: str, typecast_name: str) -> bytes:
+async def _call_typecast_tts(text: str, typecast_voice_id: str) -> bytes:
     api_key = os.getenv("TYPECAST_API_KEY", "")
-    voice_id = await _resolve_typecast_voice_id(typecast_name)
-
     async with aiohttp.ClientSession() as session:
         async with session.post(
             f"{_TYPECAST_API_BASE}/v1/text-to-speech",
             headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
             json={
-                "voice_id": voice_id,
+                "voice_id": typecast_voice_id,
                 "text": text,
                 "model": "ssfm-v30",
                 "output": {"audio_format": "mp3"},
@@ -99,17 +99,28 @@ async def _synthesize_typecast(text: str, typecast_name: str) -> bytes:
 
 
 async def synthesize(text: str, voice_id: str) -> bytes:
-    """목소리 ID 하나로 mp3 오디오 바이트를 만들어 돌려준다."""
+    """목소리 ID 하나로 mp3 오디오 바이트를 만들어 돌려준다.
+
+    ID 접두사로 어느 엔진인지 스스로 알 수 있게 만들어뒀다:
+      - "polly:VoiceId:엔진"  → AWS Polly
+      - "typecast:이름"        → 타입캐스트 (추천 목록, 이름으로 API 조회 후 캐싱)
+      - "typecast_id:voice_id" → 타입캐스트 (전체 카탈로그에서 검색해 고른 것, id 그대로 사용)
+      - 그 외                  → edge-tts ShortName 그대로 사용
+    """
     text = normalize_for_tts(text)
-    info = _VOICE_LOOKUP.get(voice_id)
 
-    if info and info.get("engine") == "polly":
+    if voice_id.startswith("polly:"):
+        _, polly_voice_id, polly_engine = voice_id.split(":", 2)
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None, _synthesize_polly_sync, text, info["polly_voice_id"], info.get("polly_engine", "neural")
-        )
+        return await loop.run_in_executor(None, _synthesize_polly_sync, text, polly_voice_id, polly_engine)
 
-    if info and info.get("engine") == "typecast":
-        return await _synthesize_typecast(text, info["typecast_name"])
+    if voice_id.startswith("typecast_id:"):
+        typecast_voice_id = voice_id.split(":", 1)[1]
+        return await _call_typecast_tts(text, typecast_voice_id)
+
+    if voice_id.startswith("typecast:"):
+        typecast_name = voice_id.split(":", 1)[1]
+        typecast_voice_id = await _resolve_typecast_voice_id(typecast_name)
+        return await _call_typecast_tts(text, typecast_voice_id)
 
     return await _synthesize_edge(text, voice_id)

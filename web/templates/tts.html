@@ -22,9 +22,27 @@
       <label class="tts-voice-row">
         <input type="radio" name="voice" value="{{ v.id }}" {% if tts.voice == v.id or (not tts.voice and loop.first) %}checked{% endif %}>
         <span>{{ v.label }}</span>
+        {% if v.preview_url %}
+        <button type="button" class="tts-preview-btn" data-external-preview="{{ v.preview_url }}">▶️ 미리듣기</button>
+        {% else %}
         <button type="button" class="tts-preview-btn" data-voice="{{ v.id }}">▶️ 미리듣기</button>
+        {% endif %}
       </label>
       {% endfor %}
+    </div>
+
+    <label style="margin-top:18px;">타입캐스트 전체 목소리에서 검색하기 (약 600개 — 이름/성별/나이/용도로 찾아보세요)</label>
+    <input type="text" id="typecast-search-input" placeholder="예: 여성, 청년, 상현, 애니메이션...">
+    <div class="tts-voice-list" id="typecast-search-results" style="margin-top:8px;">
+      {% if selected_catalog_voice %}
+      <label class="tts-voice-row">
+        <input type="radio" name="voice" value="{{ selected_catalog_voice.id }}" checked>
+        <span>{{ selected_catalog_voice.label }} (현재 선택됨)</span>
+        {% if selected_catalog_voice.preview_url %}
+        <button type="button" class="tts-preview-btn" data-external-preview="{{ selected_catalog_voice.preview_url }}">▶️ 미리듣기</button>
+        {% endif %}
+      </label>
+      {% endif %}
     </div>
 
     <label style="margin-top:14px;">직접 입력 (선택 — 위 목록에 없는 목소리를 쓰고 싶을 때만)</label>
@@ -58,14 +76,82 @@
       player.play();
     }
 
-    document.querySelectorAll(".tts-preview-btn[data-voice]").forEach(function (btn) {
-      btn.addEventListener("click", function () { playPreview(btn.dataset.voice); });
-    });
+    function playExternalPreview(url) {
+      if (!url) return;
+      player.src = url;  // 타입캐스트가 미리 준비해둔 무료 샘플 — 크레딧을 안 쓴다.
+      player.play();
+    }
+
+    function bindPreviewButtons(root) {
+      root.querySelectorAll(".tts-preview-btn[data-voice]").forEach(function (btn) {
+        btn.addEventListener("click", function () { playPreview(btn.dataset.voice); });
+      });
+      root.querySelectorAll(".tts-preview-btn[data-external-preview]").forEach(function (btn) {
+        btn.addEventListener("click", function () { playExternalPreview(btn.dataset.externalPreview); });
+      });
+    }
+
+    bindPreviewButtons(document);
 
     const customBtn = document.getElementById("custom-voice-preview");
     const customInput = document.getElementById("custom-voice-input");
     if (customBtn) {
       customBtn.addEventListener("click", function () { playPreview(customInput.value.trim()); });
+    }
+
+    // 타입캐스트 전체 목소리(약 600개) 검색 — 입력을 멈추고 잠깐 뒤에 서버에 물어본다
+    // (매 키 입력마다 부르면 낭비라서 350ms 정도 기다렸다가 마지막 입력만 보낸다).
+    const searchInput = document.getElementById("typecast-search-input");
+    const resultsBox = document.getElementById("typecast-search-results");
+    let searchTimer = null;
+
+    function renderSearchResults(voices) {
+      resultsBox.innerHTML = "";
+      if (!voices.length) return;
+      voices.forEach(function (v) {
+        const label = document.createElement("label");
+        label.className = "tts-voice-row";
+
+        const radio = document.createElement("input");
+        radio.type = "radio";
+        radio.name = "voice";
+        radio.value = v.id;
+
+        const span = document.createElement("span");
+        span.textContent = v.label;
+
+        label.appendChild(radio);
+        label.appendChild(span);
+
+        if (v.preview_url) {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "tts-preview-btn";
+          btn.textContent = "▶️ 미리듣기";
+          btn.dataset.externalPreview = v.preview_url;
+          label.appendChild(btn);
+        }
+
+        resultsBox.appendChild(label);
+      });
+      bindPreviewButtons(resultsBox);
+    }
+
+    if (searchInput) {
+      searchInput.addEventListener("input", function () {
+        clearTimeout(searchTimer);
+        const q = searchInput.value.trim();
+        if (!q) {
+          renderSearchResults([]);
+          return;
+        }
+        searchTimer = setTimeout(function () {
+          fetch("{{ url_for('tts_search_voices', guild_id=guild_id) }}?q=" + encodeURIComponent(q))
+            .then(function (res) { return res.json(); })
+            .then(renderSearchResults)
+            .catch(function () { renderSearchResults([]); });
+        }, 350);
+      });
     }
   })();
 </script>
