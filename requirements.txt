@@ -1,4 +1,4 @@
-discord.py>=2.7.1
+discord.py[voice]>=2.7.1
 python-dotenv>=1.0.1
 
 # 웹 설정 페이지 (web/app.py)
@@ -6,7 +6,9 @@ flask>=3.0.0
 requests>=2.31.0
 
 # 음성채널 TTS 읽어주기 (cogs/tts.py)
-PyNaCl>=1.5.0
+# 음성 연결에 필요한 PyNaCl + davey(디스코드 DAVE E2EE 프로토콜용)는 discord.py의
+# [voice] extra가 호환되는 버전으로 알아서 같이 설치해준다. 따로 PyNaCl을 적어두면
+# 버전이 어긋나서 "davey library needed in order to use voice" 오류가 날 수 있다.
 edge-tts>=6.1.9
 boto3>=1.34.0
 
