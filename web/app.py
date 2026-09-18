@@ -827,8 +827,9 @@ def _cleanup_channel_messages(channel_id: int, limit: int | None) -> int:
 def guild_cleanup(guild_id):
     """관리자가 지정한 채널의 메시지를 정리(대량 삭제)하는 페이지.
 
-    되돌릴 수 없는 작업이라, 폼에 채널 이름을 직접 입력해서 확인하는 절차를 거쳐야만
-    실제로 삭제가 실행된다 (셀렉트에서 실수로 다른 채널을 고르는 것을 막기 위함).
+    되돌릴 수 없는 작업이라, "정말 지울게요" 체크박스에 직접 체크해야만 실제로
+    삭제가 실행된다 (셀렉트에서 실수로 다른 채널을 고르고 그대로 제출하는 것을
+    막기 위함 — 체크박스는 채널을 바꾸면 프론트엔드에서 자동으로 풀린다).
     """
     ch = _channels(guild_id)
     result = None
@@ -836,11 +837,11 @@ def guild_cleanup(guild_id):
     if request.method == "POST":
         channel_id = int(request.form["channel_id"])
         amount = request.form.get("amount", "100")
-        confirm_name = (request.form.get("confirm_name") or "").strip()
+        confirmed = request.form.get("confirm") == "on"
         channel_name = ch["channels_by_id"].get(channel_id)
 
-        if channel_name is None or confirm_name != channel_name:
-            result = {"error": "채널 이름이 정확히 일치하지 않아요. 다시 확인 후 입력해주세요."}
+        if channel_name is None or not confirmed:
+            result = {"error": "삭제 확인 체크박스에 체크해주세요."}
         else:
             limit = None if amount == "all" else int(amount)
             try:

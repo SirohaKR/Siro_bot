@@ -4,7 +4,6 @@
   <p class="desc" style="margin-bottom:14px;">
     고른 채널의 메시지를 한꺼번에 지워서 깨끗하게 정리합니다.
     <strong style="color:var(--danger);">지운 메시지는 복구할 수 없어요.</strong>
-    실수를 막기 위해, 삭제를 실행하려면 채널 이름을 직접 입력해서 확인해야 합니다.
   </p>
 
   {% if result %}
@@ -40,8 +39,10 @@
     </p>
 
     <div style="margin-top:18px;padding:12px 14px;border:1px solid var(--danger);border-radius:8px;background:rgba(226,87,76,0.08);">
-      <label style="margin-top:0;">확인을 위해 채널 이름을 정확히 입력하세요 (예: <span id="cleanup-expected-name">채널을 먼저 골라주세요</span>)</label>
-      <input type="text" name="confirm_name" id="cleanup-confirm" placeholder="채널 이름 입력" autocomplete="off">
+      <label style="display:flex;align-items:center;gap:8px;margin-top:0;font-weight:600;cursor:pointer;">
+        <input type="checkbox" name="confirm" id="cleanup-confirm" style="width:auto;">
+        <span id="cleanup-confirm-label">먼저 채널을 골라주세요</span>
+      </label>
     </div>
 
     <button type="submit" id="cleanup-submit" disabled style="background:var(--danger);">🗑️ 메시지 삭제 실행</button>
@@ -51,26 +52,27 @@
 <script>
   (function () {
     const channelSelect = document.getElementById("cleanup-channel");
-    const expectedNameLabel = document.getElementById("cleanup-expected-name");
-    const confirmInput = document.getElementById("cleanup-confirm");
+    const confirmLabel = document.getElementById("cleanup-confirm-label");
+    const confirmCheckbox = document.getElementById("cleanup-confirm");
     const submitBtn = document.getElementById("cleanup-submit");
 
-    function expectedName() {
+    function selectedChannelName() {
       const opt = channelSelect.options[channelSelect.selectedIndex];
       return opt ? (opt.dataset.name || "") : "";
     }
 
     function refreshState() {
-      const expected = expectedName();
-      expectedNameLabel.textContent = expected || "채널을 먼저 골라주세요";
-      submitBtn.disabled = !expected || confirmInput.value.trim() !== expected;
+      const name = selectedChannelName();
+      confirmLabel.textContent = name ? ("#" + name + " 채널의 메시지를 지우는 것에 동의합니다") : "먼저 채널을 골라주세요";
+      confirmCheckbox.disabled = !name;
+      submitBtn.disabled = !name || !confirmCheckbox.checked;
     }
 
     channelSelect.addEventListener("change", function () {
-      confirmInput.value = "";
+      confirmCheckbox.checked = false;  // 채널을 바꾸면 동의를 다시 받는다.
       refreshState();
     });
-    confirmInput.addEventListener("input", refreshState);
+    confirmCheckbox.addEventListener("change", refreshState);
     refreshState();
   })();
 </script>
