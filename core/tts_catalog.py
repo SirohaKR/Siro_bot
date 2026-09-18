@@ -38,8 +38,22 @@ _AGE_KO = {
 _typecast_catalog_cache: list[dict] | None = None
 
 
+def _looks_non_korean(names: dict) -> bool:
+    """영어 이름이 "성 이름"처럼 두 단어 이상이면(예: "Miu Kobayashi") 대개 일본어권
+    등 한국어가 아닌 시장을 겨냥한 목소리다 — 한국어 이름란도 그냥 그 발음을 한글로
+    옮겨 적은 것뿐이라("고바야시 미우"), 실제로 한국어를 잘 읽는다는 뜻이 아니다.
+
+    타입캐스트 API 응답에 언어를 나타내는 필드가 따로 없어서 쓰는 근사치다 —
+    완벽하진 않아서(그리스 신화 이름 같은 한 단어짜리 서양 이름 등은 못 거름),
+    "확실히 아닌 것"만 우선 걸러내는 용도로 쓴다.
+    """
+    eng_name = names.get("eng", "")
+    return len(eng_name.split()) >= 2
+
+
 async def list_typecast_voices() -> list[dict]:
-    """타입캐스트 전체 목소리 목록을 {id, name, label, search_text, preview_url} 형태로 돌려준다.
+    """타입캐스트 목소리 목록을 {id, name, label, search_text, preview_url} 형태로 돌려준다.
+    한국어 시장 대상이 아닌 게 뚜렷한 목소리(_looks_non_korean 참고)는 미리 걸러둔다.
 
     TYPECAST_API_KEY가 없으면 빈 목록을 돌려준다 (Polly처럼 유료 기능이라, 키가
     없는 서버에서는 그냥 안 보이는 게 맞다).
@@ -60,6 +74,9 @@ async def list_typecast_voices() -> list[dict]:
     catalog = []
     for v in raw:
         names = v.get("voice_name", {})
+        if _looks_non_korean(names):
+            continue
+
         kor_name = names.get("kor") or names.get("eng") or v["voice_id"]
         eng_name = names.get("eng", "")
         gender = _GENDER_KO.get(v.get("gender"), "")
@@ -85,8 +102,9 @@ async def list_typecast_voices() -> list[dict]:
     return catalog
 
 
-async def search_typecast_voices(query: str, limit: int = 25) -> list[dict]:
-    """이름/성별/나이/용도로 부분 일치 검색. 검색어가 비어있으면 앞에서부터 limit개."""
+async def search_typecast_voices(query: str, limit: int = 1000) -> list[dict]:
+    """이름/성별/나이/용도로 부분 일치 검색. 검색어가 비어있으면 전체 목록(앞에서부터
+    limit개)을 돌려준다 — 뭘 검색해야 할지 모를 때 그냥 목록을 훑어볼 수 있게."""
     catalog = await list_typecast_voices()
     q = query.strip().lower()
     if not q:

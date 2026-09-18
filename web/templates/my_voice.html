@@ -58,19 +58,9 @@
         {% endfor %}
       </div>
 
-      <label style="margin-top:18px;">타입캐스트 전체 목소리에서 검색하기 (약 600개 — 이름/성별/나이/용도로 찾아보세요)</label>
+      <label style="margin-top:18px;">타입캐스트 목소리에서 검색하기 (이름/성별/나이/용도로 찾아보세요 — 비워두면 전체 목록이 보여요)</label>
       <input type="text" id="typecast-search-input" placeholder="예: 여성, 청년, 상현, 애니메이션...">
-      <div class="tts-voice-list" id="typecast-search-results" style="margin-top:8px;">
-        {% if selected_catalog_voice %}
-        <label class="tts-voice-row">
-          <input type="radio" name="voice" value="{{ selected_catalog_voice.id }}" checked>
-          <span>{{ selected_catalog_voice.label }} (현재 선택됨)</span>
-          {% if selected_catalog_voice.preview_url %}
-          <button type="button" class="tts-preview-btn" data-external-preview="{{ selected_catalog_voice.preview_url }}">▶️ 미리듣기</button>
-          {% endif %}
-        </label>
-        {% endif %}
-      </div>
+      <div class="tts-voice-list" id="typecast-search-results" style="margin-top:8px;"></div>
 
       <audio id="tts-preview-player" style="display:none;"></audio>
 
@@ -110,11 +100,11 @@
 
     const searchInput = document.getElementById("typecast-search-input");
     const resultsBox = document.getElementById("typecast-search-results");
+    const currentVoiceId = {{ (current_voice or "")|tojson }};
     let searchTimer = null;
 
     function renderSearchResults(voices) {
       resultsBox.innerHTML = "";
-      if (!voices.length) return;
       voices.forEach(function (v) {
         const label = document.createElement("label");
         label.className = "tts-voice-row";
@@ -123,9 +113,10 @@
         radio.type = "radio";
         radio.name = "voice";
         radio.value = v.id;
+        radio.checked = v.id === currentVoiceId;
 
         const span = document.createElement("span");
-        span.textContent = v.label;
+        span.textContent = v.label + (radio.checked ? " (현재 선택됨)" : "");
 
         label.appendChild(radio);
         label.appendChild(span);
@@ -144,21 +135,19 @@
       bindPreviewButtons(resultsBox);
     }
 
+    function runSearch(q) {
+      fetch("{{ url_for('my_voice_search_voices') }}?q=" + encodeURIComponent(q))
+        .then(function (res) { return res.json(); })
+        .then(renderSearchResults)
+        .catch(function () { renderSearchResults([]); });
+    }
+
     if (searchInput) {
       searchInput.addEventListener("input", function () {
         clearTimeout(searchTimer);
-        const q = searchInput.value.trim();
-        if (!q) {
-          renderSearchResults([]);
-          return;
-        }
-        searchTimer = setTimeout(function () {
-          fetch("{{ url_for('my_voice_search_voices') }}?q=" + encodeURIComponent(q))
-            .then(function (res) { return res.json(); })
-            .then(renderSearchResults)
-            .catch(function () { renderSearchResults([]); });
-        }, 350);
+        searchTimer = setTimeout(function () { runSearch(searchInput.value.trim()); }, 350);
       });
+      runSearch("");  // 페이지 열자마자 전체 목록 한 번 보여주기
     }
   })();
 </script>

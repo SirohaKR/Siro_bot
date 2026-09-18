@@ -47,7 +47,7 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from core import discord_api, discord_oauth, settings_store  # noqa: E402
-from core.tts_catalog import find_typecast_voice, list_typecast_voices, search_typecast_voices  # noqa: E402
+from core.tts_catalog import list_typecast_voices, search_typecast_voices  # noqa: E402
 from core.tts_engine import synthesize  # noqa: E402
 from core.tts_voices import available_voices  # noqa: E402
 
@@ -229,22 +229,14 @@ def my_voice():
         return redirect(url_for("my_voice"))
 
     display_name = member.get("nick") or member["user"]["username"]
-    current_voice = user_voices.get(str(user_id))
-    curated_voices = _curated_tts_voices()
-    curated_ids = {v["id"] for v in curated_voices}
-
-    selected_catalog_voice = None
-    if current_voice and current_voice not in curated_ids and current_voice.startswith("typecast_id:"):
-        selected_catalog_voice = asyncio.run(find_typecast_voice(current_voice))
 
     return render_template(
         "my_voice.html",
         logged_in=True,
         not_member=False,
         display_name=display_name,
-        tts_voices=curated_voices,
-        current_voice=current_voice,
-        selected_catalog_voice=selected_catalog_voice,
+        tts_voices=_curated_tts_voices(),
+        current_voice=user_voices.get(str(user_id)),
     )
 
 
@@ -674,10 +666,6 @@ def guild_tts(guild_id):
         return redirect(url_for("guild_tts", guild_id=guild_id))
 
     tts = settings_store.get_guild_settings(guild_id).get("tts", {})
-    curated_ids = {v["id"] for v in available_voices()}
-    selected_catalog_voice = None
-    if tts.get("voice") and tts["voice"] not in curated_ids and tts["voice"].startswith("typecast_id:"):
-        selected_catalog_voice = asyncio.run(find_typecast_voice(tts["voice"]))
 
     return render_template(
         "tts.html",
@@ -688,20 +676,14 @@ def guild_tts(guild_id):
         text_channels=_channels(guild_id)["text_channels"],
         tts=tts,
         tts_voices=_curated_tts_voices(),
-        selected_catalog_voice=selected_catalog_voice,
     )
 
 
 def _search_voices_response(query: str):
-    """타입캐스트 전체 목소리(약 600개)를 이름/성별/나이/용도로 검색한다.
-
-    관리자 페이지("🗣️ TTS")와 "내 목소리 설정" 오픈 페이지가 같이 쓴다. 검색어가
-    비어있으면 빈 목록을 돌려준다 (600개를 한 번에 다 그리면 느려지니, 뭘 찾는지
-    입력했을 때만 보여줌).
-    """
-    if not query.strip():
-        return jsonify([])
-    results = asyncio.run(search_typecast_voices(query, limit=30))
+    """타입캐스트 목소리를 이름/성별/나이/용도로 검색한다. 관리자 페이지("🗣️ TTS")와
+    "내 목소리 설정" 오픈 페이지가 같이 쓴다. 검색어가 비어있으면(아직 아무것도 안
+    입력했으면) 전체 목록을 돌려줘서, 뭘 찾을지 몰라도 쭉 훑어보며 고를 수 있다."""
+    results = asyncio.run(search_typecast_voices(query))
     return jsonify(results)
 
 
