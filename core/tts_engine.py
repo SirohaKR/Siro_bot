@@ -82,6 +82,9 @@ async def _resolve_typecast_voice_id(name: str) -> str:
 
 
 async def _call_typecast_tts(text: str, typecast_voice_id: str) -> bytes:
+    """채팅 메시지는 미리 감정을 정해둘 수 없으니(누가 뭘 칠지 모름), "smart" 모드로
+    문장 내용을 보고 어울리는 감정(기쁨/슬픔/화남 등)을 타입캐스트가 알아서 추론해서
+    읽게 한다. 이걸 안 보내면 항상 "normal"(무감정 톤)로만 읽는다."""
     api_key = os.getenv("TYPECAST_API_KEY", "")
     async with aiohttp.ClientSession() as session:
         async with session.post(
@@ -91,6 +94,7 @@ async def _call_typecast_tts(text: str, typecast_voice_id: str) -> bytes:
                 "voice_id": typecast_voice_id,
                 "text": text,
                 "model": "ssfm-v30",
+                "prompt": {"emotion_type": "smart"},
                 "output": {"audio_format": "mp3"},
             },
         ) as resp:
