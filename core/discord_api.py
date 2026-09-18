@@ -15,11 +15,22 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from urllib.parse import quote
 
 import requests
 
 API_BASE = "https://discord.com/api/v10"
+
+# 디스코드 스노우플레이크(메시지 ID 등)는 "만들어진 시각"을 그대로 품고 있는 숫자다.
+# 2015-01-01(디스코드 자체 기준 시각)부터 몇 밀리초 지났는지를 앞쪽 비트에 담아뒀다.
+# "채널 정리" 기능에서 "이 메시지가 14일보다 오래됐는지"를 판단할 때 쓴다 — 오래된
+# 메시지는 한꺼번에(bulk) 못 지우고 하나씩 지워야 한다는 디스코드 자체 제한 때문.
+DISCORD_EPOCH_MS = 1420070400000
+
+
+def snowflake_from_timestamp_ms(timestamp_ms: int) -> int:
+    return (timestamp_ms - DISCORD_EPOCH_MS) << 22
 
 
 def _headers() -> dict:
@@ -140,4 +151,49 @@ def remove_role(guild_id: int, user_id: int, role_id: int) -> None:
     r = requests.delete(
         f"{API_BASE}/guilds/{guild_id}/members/{user_id}/roles/{role_id}", headers=_headers(), timeout=10
     )
+    r.raise_for_status()
+
+
+def _request_with_rate_limit_retry(method: str, url: str, **kwargs) -> requests.Response:
+    """디스코드가 "너무 빨리 요청한다"며 429를 돌려주면, 응답에 적힌 대기 시간만큼
+    쉬었다가 다시 시도한다. 메시지를 하나씩 지울 때(채널 정리 기능)처럼 요청을 짧은
+    시간에 많이 보내야 하는 곳에서 쓴다 — 임의로 간격을 정해서 쉬는 대신, 디스코드가
+    알려주는 실제 값을 그대로 따른다.
+    """
+    while True:
+        r = requests.request(method, url, headers=_headers(), timeout=10, **kwargs)
+        if r.status_code == 429:
+            retry_after = r.json().get("retry_after", 1)
+            time.sleep(retry_after)
+            continue
+        return r
+
+
+def get_channel_messages(channel_id: int, limit: int = 100, before: int | None = None) -> list[dict]:
+    """채널의 메시지 목록을 최신순으로 가져온다. limit은 디스코드 API 한도인 최대 100.
+    before(메시지 ID)를 넘기면 그 메시지보다 이전 것들을 가져온다 — 100개씩 계속
+    페이지를 넘기며 오래된 메시지까지 훑을 때 쓴다."""
+    params = {"limit": limit}
+    if before:
+        params["before"] = before
+    r = _request_with_rate_limit_retry("GET", f"{API_BASE}/channels/{channel_id}/messages", params=params)
+    r.raise_for_status()
+    return r.json()
+
+
+def bulk_delete_messages(channel_id: int, message_ids: list[str]) -> None:
+    """2~100개의 메시지를 한 번에 지운다. 디스코드 자체 제한으로 14일보다 오래된
+    메시지가 섞여 있으면 통째로 실패하니, 부르기 전에 반드시 14일 이내 것만 걸러야
+    한다 (web/app.py의 _cleanup_channel_messages가 그 필터링을 담당)."""
+    r = _request_with_rate_limit_retry(
+        "POST", f"{API_BASE}/channels/{channel_id}/messages/bulk-delete", json={"messages": message_ids}
+    )
+    r.raise_for_status()
+
+
+def delete_message(channel_id: int, message_id: int) -> None:
+    """메시지를 하나씩 지운다. 14일보다 오래돼서 bulk_delete_messages를 못 쓸 때 대신 쓴다."""
+    r = _request_with_rate_limit_retry("DELETE", f"{API_BASE}/channels/{channel_id}/messages/{message_id}")
+    if r.status_code == 404:
+        return  # 이미 지워졌으면(예: 유저가 직접 지움) 그냥 넘어간다.
     r.raise_for_status()

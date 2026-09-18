@@ -237,6 +237,7 @@
       <a href="{{ url_for('guild_tts', guild_id=guild_id) }}" class="{{ 'active' if active == 'tts' else '' }}">🗣️ TTS</a>
       <a href="{{ url_for('guild_ranks', guild_id=guild_id) }}" class="{{ 'active' if active == 'ranks' else '' }}">👑 길드 직급</a>
       <a href="{{ url_for('guild_members', guild_id=guild_id) }}" class="{{ 'active' if active == 'members' else '' }}">🧑‍🤝‍🧑 역할 부여</a>
+      <a href="{{ url_for('guild_cleanup', guild_id=guild_id) }}" class="{{ 'active' if active == 'cleanup' else '' }}">🧹 채팅 정리</a>
     </nav>
     {% if session.get('authed') %}
     <form method="post" action="{{ url_for('logout') }}">

@@ -34,6 +34,7 @@ import io
 import os
 import secrets
 import sys
+import time
 
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory, session, url_for
@@ -800,6 +801,80 @@ def guild_members(guild_id):
         page_desc="멤버를 골라서 직급 역할을 직접 부여해요 (셀프 지급 아님).",
         members=sorted(members, key=lambda m: m["name"].lower()),
         guild_ranks=GUILD_RANKS,
+    )
+
+
+def _cleanup_channel_messages(channel_id: int, limit: int | None) -> int:
+    """channel_id의 메시지를 최근 것부터 limit개(None이면 채널이 빌 때까지 전부) 지운다.
+
+    디스코드 자체 제한 때문에 14일 이내 메시지는 한 번에 최대 100개씩 묶어(bulk) 지우고,
+    그보다 오래된 메시지는 하나씩 지운다 — 오래된 메시지가 많으면 그만큼 오래 걸린다.
+    """
+    deleted = 0
+    fourteen_days_ago_snowflake = discord_api.snowflake_from_timestamp_ms(
+        int((time.time() - 14 * 24 * 3600) * 1000)
+    )
+    before = None
+
+    while limit is None or deleted < limit:
+        batch_size = 100 if limit is None else min(100, limit - deleted)
+        messages = discord_api.get_channel_messages(channel_id, limit=batch_size, before=before)
+        if not messages:
+            break
+
+        recent_ids = [m["id"] for m in messages if int(m["id"]) > fourteen_days_ago_snowflake]
+        old_ids = [m["id"] for m in messages if int(m["id"]) <= fourteen_days_ago_snowflake]
+
+        if len(recent_ids) >= 2:
+            discord_api.bulk_delete_messages(channel_id, recent_ids)
+            deleted += len(recent_ids)
+        elif len(recent_ids) == 1:
+            discord_api.delete_message(channel_id, int(recent_ids[0]))
+            deleted += 1
+
+        for mid in old_ids:
+            discord_api.delete_message(channel_id, int(mid))
+            deleted += 1
+
+        before = messages[-1]["id"]
+
+    return deleted
+
+
+@app.route("/guild/<int:guild_id>/cleanup", methods=["GET", "POST"])
+def guild_cleanup(guild_id):
+    """관리자가 지정한 채널의 메시지를 정리(대량 삭제)하는 페이지.
+
+    되돌릴 수 없는 작업이라, 폼에 채널 이름을 직접 입력해서 확인하는 절차를 거쳐야만
+    실제로 삭제가 실행된다 (셀렉트에서 실수로 다른 채널을 고르는 것을 막기 위함).
+    """
+    ch = _channels(guild_id)
+    result = None
+
+    if request.method == "POST":
+        channel_id = int(request.form["channel_id"])
+        amount = request.form.get("amount", "100")
+        confirm_name = (request.form.get("confirm_name") or "").strip()
+        channel_name = ch["channels_by_id"].get(channel_id)
+
+        if channel_name is None or confirm_name != channel_name:
+            result = {"error": "채널 이름이 정확히 일치하지 않아요. 다시 확인 후 입력해주세요."}
+        else:
+            limit = None if amount == "all" else int(amount)
+            try:
+                deleted = _cleanup_channel_messages(channel_id, limit)
+                result = {"deleted": deleted, "channel_name": channel_name}
+            except Exception as e:
+                result = {"error": f"삭제 중 오류가 발생했어요: {e}"}
+
+    return render_template(
+        "cleanup.html",
+        guild_id=guild_id,
+        active="cleanup",
+        page_title="🧹 채팅 정리",
+        page_desc="채널을 고르고 메시지를 한꺼번에 지워서 깨끗하게 정리해요. 지운 메시지는 복구할 수 없어요.",
+        text_channels=ch["text_channels"],
+        result=result,
     )
 
 
