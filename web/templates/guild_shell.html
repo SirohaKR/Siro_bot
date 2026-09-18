@@ -262,7 +262,7 @@
   // name="image_file"인 숨겨진 input에 결과 파일을 넣어서, 서버 쪽 코드는 그냥
   // 지금까지처럼 "파일이 있으면 파일 우선, 없으면 URL" 로직만 보면 되게 만든다.
   document.querySelectorAll(".image-picker").forEach(function (root) {
-    const tabs = root.querySelectorAll(".ip-tab");
+    const tabs = root.querySelectorAll(".ip-tab:not(.ip-ratio-tab)");
     const panels = root.querySelectorAll(".ip-panel");
     const finalInput = root.querySelector(".ip-final-input");
     const fileSource = root.querySelector(".ip-file-source");
@@ -275,9 +275,20 @@
     const cropResetBtn = root.querySelector(".ip-crop-reset");
     const cropRotateBtn = root.querySelector(".ip-crop-rotate");
     const cropStatus = root.querySelector(".ip-crop-status");
+    const ratioTabs = root.querySelectorAll(".ip-ratio-tab");
 
     let originalFile = null;
     let dragStart = null;
+    let cropRatio = 0;  // 0이면 자유롭게, 아니면 가로/세로 비율(예: 1, 1.7778)
+
+    ratioTabs.forEach(function (tab) {
+      tab.addEventListener("click", function () {
+        ratioTabs.forEach(function (t) { t.classList.remove("active"); });
+        tab.classList.add("active");
+        cropRatio = parseFloat(tab.dataset.ratio) || 0;
+        cropBox.hidden = true;  // 비율을 바꾸면 기존 선택 영역은 다시 그리게 한다.
+      });
+    });
 
     function setFinalFile(file) {
       const dt = new DataTransfer();
@@ -354,8 +365,25 @@
         if (!dragStart) return;
         const rect = cropStage.getBoundingClientRect();
         const p = pointFromEvent(e);
-        const x = Math.max(0, Math.min(p.x - rect.left, rect.width));
-        const y = Math.max(0, Math.min(p.y - rect.top, rect.height));
+        let x = Math.max(0, Math.min(p.x - rect.left, rect.width));
+        let y = Math.max(0, Math.min(p.y - rect.top, rect.height));
+
+        if (cropRatio > 0) {
+          // 비율이 고정된 상태면, 드래그 방향과 상관없이 가로/세로 중 더 많이 움직인
+          // 쪽을 기준으로 나머지 한 변을 그 비율에 맞게 계산해서 늘 정확한 비율로
+          // 잘릴 영역이 그려지게 한다.
+          const dx = x - dragStart.x;
+          const dy = y - dragStart.y;
+          if (Math.abs(dx) > Math.abs(dy) * cropRatio) {
+            y = dragStart.y + Math.sign(dy || 1) * Math.abs(dx) / cropRatio;
+          } else {
+            x = dragStart.x + Math.sign(dx || 1) * Math.abs(dy) * cropRatio;
+          }
+          // 계산한 좌표가 이미지 밖으로 나가면, 비율은 그대로 둔 채 안쪽으로 눌러준다.
+          x = Math.max(0, Math.min(x, rect.width));
+          y = Math.max(0, Math.min(y, rect.height));
+        }
+
         Object.assign(cropBox.style, {
           left: Math.min(x, dragStart.x) + "px",
           top: Math.min(y, dragStart.y) + "px",
