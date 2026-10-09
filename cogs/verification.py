@@ -11,8 +11,9 @@
    웹에서 써둔 "캐릭터 인증" 안내 문구를 남긴다.
 3. 멤버가 그 스레드에 인증용 이미지를 올리면, 이 Cog가 "✅ 승인 / ❌ 거절" 버튼이 달린
    확인 카드를 스레드에 남긴다.
-4. "역할 관리" 권한이 있는 관리자가 승인을 누르면 웹에서 지정해둔 역할을 부여하고,
-   거절을 누르면 스레드는 그대로 두어 다시 이미지를 올릴 수 있게 한다.
+4. 웹 "인증 담당자"에서 지정한 역할군/멤버(또는 서버 관리자, '역할 관리' 권한자)가
+   승인을 누르면 웹에서 지정해둔 역할을 부여하고, 거절을 누르면 스레드는 그대로 두어
+   다시 이미지를 올릴 수 있게 한다. 담당자들은 스레드가 만들어질 때 자동으로 초대된다.
 
 버튼 클릭(컴포넌트 인터랙션)은 discord.py의 View 콜백 대신 on_interaction에서 custom_id를
 직접 해석해서 처리한다. custom_id 안에 필요한 정보(대상 유저 ID)를 다 담아두면, 봇이
@@ -46,6 +47,47 @@ def _is_image_attachment(attachment: discord.Attachment) -> bool:
 def _is_verify_admin(member: discord.Member) -> bool:
     perms = member.guild_permissions
     return perms.administrator or perms.manage_roles
+
+
+def _reviewer_ids(settings: dict) -> tuple[set[int], set[int]]:
+    """웹 "인증 담당자"에서 지정한 (역할 ID들, 멤버 ID들)."""
+    reviewers = settings.get("verification_reviewers") or {}
+    return {int(x) for x in reviewers.get("role_ids", [])}, {int(x) for x in reviewers.get("member_ids", [])}
+
+
+def _can_review(member: discord.Member, settings: dict) -> bool:
+    """승인/거절 버튼을 누를 수 있는 사람인지. 지정된 담당 역할/멤버이거나, 예전처럼
+    서버 관리자/'역할 관리' 권한자면 통과한다."""
+    if _is_verify_admin(member):
+        return True
+    role_ids, member_ids = _reviewer_ids(settings)
+    return member.id in member_ids or any(r.id in role_ids for r in member.roles)
+
+
+def _collect_reviewers(guild: discord.Guild, settings: dict, exclude_id: int) -> list[discord.Member]:
+    """새 인증 스레드에 초대할 담당자들. 웹에서 담당 역할/멤버를 하나라도 지정해뒀으면 그
+    사람들만, 아무것도 지정 안 했으면 예전 방식대로 '역할 관리' 권한자를 대상으로 한다."""
+    role_ids, member_ids = _reviewer_ids(settings)
+    if role_ids or member_ids:
+        candidates = [m for m in guild.members if m.id in member_ids or any(r.id in role_ids for r in m.roles)]
+    else:
+        candidates = [m for m in guild.members if _is_verify_admin(m)]
+    return [m for m in candidates if not m.bot and m.id != exclude_id]
+
+
+def _chunk_mentions(mentions: list[str], limit: int = 1800) -> list[str]:
+    """멘션 문자열들을 디스코드 메시지 길이 제한(2000자)을 넘지 않게 묶어서 나눈다."""
+    chunks: list[str] = []
+    current = ""
+    for mention in mentions:
+        if current and len(current) + 1 + len(mention) > limit:
+            chunks.append(current)
+            current = mention
+        else:
+            current = f"{current} {mention}".strip()
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 class Verification(commands.Cog):
@@ -144,18 +186,18 @@ class Verification(commands.Cog):
         embed = discord.Embed(title=title, description=body, color=0x5B8CFF)
         await thread.send(content=member.mention, embed=embed)
 
-        # 비공개 스레드는 초대된 사람만 볼 수 있어서, 만들어둬도 관리자가 못 보고 지나칠 수
-        # 있다. '역할 관리' 권한이 있는 사람은 자동으로 스레드에 넣고 멘션까지 남겨서
-        # 새 인증 요청이 왔다는 걸 바로 알 수 있게 한다.
-        admins = [m for m in guild.members if not m.bot and m.id != member.id and _is_verify_admin(m)]
-        for admin in admins:
+        # 비공개 스레드는 초대된 사람만 볼 수 있어서, 만들어둬도 담당자가 못 보고 지나칠 수
+        # 있다. 웹 "인증 담당자"에서 지정한 역할군/멤버(없으면 '역할 관리' 권한자)를
+        # 스레드에 넣고 멘션까지 남겨서, 새 인증 요청이 왔다는 걸 바로 알 수 있게 한다.
+        reviewers = _collect_reviewers(guild, get_guild_settings(guild.id), member.id)
+        for reviewer in reviewers:
             try:
-                await thread.add_user(admin)
+                await thread.add_user(reviewer)
             except discord.HTTPException:
                 pass
-        if admins:
-            mentions = " ".join(a.mention for a in admins)
-            await thread.send(f"🔔 {mentions} 새 캐릭터 인증 요청이 도착했어요!")
+        for i, chunk in enumerate(_chunk_mentions([r.mention for r in reviewers])):
+            header = "🔔 새 캐릭터 인증 요청이 도착했어요!\n" if i == 0 else ""
+            await thread.send(f"{header}{chunk}")
 
         threads_map[str(member.id)] = thread.id
         verification["threads"] = threads_map
@@ -236,9 +278,11 @@ class Verification(commands.Cog):
         if guild is None or not isinstance(admin, discord.Member):
             return
 
-        if not _is_verify_admin(admin):
+        settings = get_guild_settings(guild.id)
+        if not _can_review(admin, settings):
             await interaction.response.send_message(
-                "⚠️ 이 버튼은 '역할 관리' 권한이 있는 관리자만 사용할 수 있어요.", ephemeral=True
+                "⚠️ 이 버튼은 인증 담당자(웹에서 지정한 역할/멤버)나 서버 관리자만 사용할 수 있어요.",
+                ephemeral=True,
             )
             return
 
@@ -247,7 +291,6 @@ class Verification(commands.Cog):
         original_embeds = interaction.message.embeds or [discord.Embed()]
 
         if approve:
-            settings = get_guild_settings(guild.id)
             verification = settings.get("verification") or {}
             role = guild.get_role(verification.get("role_id")) if verification.get("role_id") else None
             member = guild.get_member(target_id)

@@ -1,0 +1,87 @@
+{% extends "guild_shell.html" %}
+{% block section %}
+<style>
+  .update-entry { margin-top: 18px; }
+  .update-entry h3 { margin: 0 0 6px; font-size: 14px; }
+  .update-item {
+    display: flex; align-items: flex-start; gap: 10px; padding: 8px 4px;
+    border-bottom: 1px solid var(--card-border); font-size: 13px; font-weight: 400; cursor: pointer; margin: 0;
+  }
+  .update-item input { margin-top: 3px; }
+  .update-item .update-text { flex: 1; }
+  .update-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  .update-actions button { margin-top: 0; padding: 7px 12px; font-size: 12px; background: var(--panel); color: var(--text); border: 1px solid var(--card-border); }
+  .update-actions button:hover { background: var(--accent); border-color: var(--accent); }
+</style>
+
+<div class="card">
+  <p class="desc" style="margin-bottom:6px;">
+    CHANGELOG에 정리돼 있는 업데이트 내용이 날짜별로 나와요. 길드원에게 알려도 되겠다 싶은
+    것만 체크해서 올려주세요. 이미 올린 항목은 "게시됨"으로 표시되고 처음엔 체크 안 된 채로
+    보여요 (원하면 다시 체크해서 또 올릴 수도 있어요). 올린 내용은 날짜와 함께
+    <code>data/post_log.txt</code>에도 기록돼요.
+  </p>
+
+  {% if entries %}
+  <form method="post" id="updates-form">
+    <label>올릴 채널</label>
+    <select name="channel_id" required>
+      <option value="">(채널을 골라주세요)</option>
+      {% for c in text_channels %}
+      <option value="{{ c.id }}" {% if log_channel_id == c.id|int %}selected{% endif %}>#{{ c.name }}</option>
+      {% endfor %}
+    </select>
+
+    <div class="update-actions">
+      <button type="button" id="updates-select-new">아직 안 올린 것 전체 선택</button>
+      <button type="button" id="updates-clear">선택 해제</button>
+      <span class="tag" id="updates-count">0개 선택됨</span>
+    </div>
+
+    {% for entry in entries %}
+    <div class="update-entry">
+      <h3>📅 {{ entry.date }}</h3>
+      {% for item in entry["items"] %}
+      <label class="update-item">
+        <input type="checkbox" name="items" value="{{ item.key }}" data-posted="{{ 1 if item.posted_at else 0 }}">
+        <span class="update-text">{{ item.text }}</span>
+        {% if item.posted_at %}<span class="tag">✅ {{ item.posted_at }} 게시됨</span>{% endif %}
+      </label>
+      {% endfor %}
+    </div>
+    {% endfor %}
+
+    <button type="submit" id="updates-submit" disabled>📢 선택한 항목 올리기</button>
+  </form>
+  {% else %}
+  <p class="desc">아직 정리된 업데이트 내용이 없어요.</p>
+  {% endif %}
+</div>
+
+<script>
+  (function () {
+    const form = document.getElementById("updates-form");
+    if (!form) return;
+    const boxes = Array.from(form.querySelectorAll('input[name="items"]'));
+    const count = document.getElementById("updates-count");
+    const submit = document.getElementById("updates-submit");
+
+    function refresh() {
+      const n = boxes.filter(function (b) { return b.checked; }).length;
+      count.textContent = n + "개 선택됨";
+      submit.disabled = n === 0;
+    }
+
+    boxes.forEach(function (b) { b.addEventListener("change", refresh); });
+    document.getElementById("updates-select-new").addEventListener("click", function () {
+      boxes.forEach(function (b) { b.checked = b.dataset.posted === "0"; });
+      refresh();
+    });
+    document.getElementById("updates-clear").addEventListener("click", function () {
+      boxes.forEach(function (b) { b.checked = false; });
+      refresh();
+    });
+    refresh();
+  })();
+</script>
+{% endblock %}

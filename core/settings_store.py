@@ -19,11 +19,12 @@
       "log_channel_id": 999,
       "threads": {"444(유저ID)": 555(스레드ID)}
     },
+    "verification_reviewers": {"role_ids": [111, 222], "member_ids": [333, 444]},
     "announcement": {"channel_id": 666, "title": "...", "body": "...", "message_id": 777},
     "guild_rules": {"channel_id": 666, "title": "...", "body": "...", "message_id": 777},
     "job_list": [{"label": "히어로", "emoji": "🦸", "role_id": 777}, ...],
     "job_roles": {"message_id": 888, "channel_id": 666, "emoji_to_role": {"🦸": {"role_id": 777, "label": "히어로"}}},
-    "rank_role_ids": {"길드마스터": 333, ...},
+    "rank_role_ids": {"길마": 333, "부길마": 334, "간부": 335, "기타 간부": 336, "길드원": 337},
     "voice_hubs": [
       {"id": 444, "name_template": "{user}의 파티"},
       {"id": 555, "name_template": "개인방 {n}"},
@@ -36,7 +37,7 @@
     "tts": {"channel_id": 777, "voice": "ko-KR-SunHiNeural"},
     "tts_user_voices": {"888(유저ID)": "ko-KR-InJoonNeural"},
     "bot_log_channel_id": 999,
-    "last_announced_version": "2026-09-14"
+    "posted_changelog": {"항목키(12자)": "2026-10-09 14:30"}
   }
 }
 
@@ -53,6 +54,8 @@ from typing import Any
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 SETTINGS_PATH = DATA_DIR / "settings.json"
+
+_RANK_RENAMES = {"길드마스터": "길마", "부길드장": "부길마"}
 
 
 def _load_all() -> dict:
@@ -99,6 +102,18 @@ def get_guild_settings(guild_id: int) -> dict:
         settings["temp_voice_channels"] = [
             {"channel_id": cid, "hub_id": None, "number": None} for cid in settings["temp_voice_channel_ids"]
         ]
+        changed = True
+
+    # 직급 이름을 "길드마스터/부길드장/길드원/신입길드원"에서 "길마/부길마/간부/기타 간부/
+    # 길드원"으로 바꿨다. 이미 연결해둔 역할이 사라지지 않게, 이름이 바뀐 직급은 새 이름으로
+    # 옮겨준다. (목록에서 빠진 "신입길드원"은 그대로 두며, 직급 페이지에서 저장하기 전까지는
+    # 멤버 화면에 현재 직급 표시로만 남는다)
+    rank_ids = settings.get("rank_role_ids")
+    if rank_ids and any(old in rank_ids for old in _RANK_RENAMES):
+        for old, new in _RANK_RENAMES.items():
+            if old in rank_ids:
+                rank_ids.setdefault(new, rank_ids[old])
+                del rank_ids[old]
         changed = True
 
     if changed:

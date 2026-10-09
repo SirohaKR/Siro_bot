@@ -35,6 +35,7 @@ import os
 import secrets
 import sys
 import time
+from datetime import datetime
 
 from dotenv import load_dotenv
 from flask import Flask, Response, jsonify, redirect, render_template, request, send_from_directory, session, url_for
@@ -46,7 +47,7 @@ from flask import Flask, Response, jsonify, redirect, render_template, request, 
 PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
-from core import discord_api, discord_oauth, settings_store  # noqa: E402
+from core import changelog, discord_api, discord_oauth, post_log, settings_store  # noqa: E402
 from core.tts_catalog import list_typecast_voices, search_typecast_voices  # noqa: E402
 from core.tts_engine import synthesize  # noqa: E402
 from core.tts_voices import available_voices  # noqa: E402
@@ -61,9 +62,9 @@ app.secret_key = os.getenv("FLASK_SECRET_KEY") or os.urandom(24)
 if not WEB_ADMIN_TOKEN:
     print("⚠️ [WARN] WEB_ADMIN_TOKEN이 설정되지 않았습니다. 아무도 로그인할 수 없습니다 (.env 확인).")
 
-# 길드 직급 목록 (위쪽일수록 높은 직급). 이모지로 셀프 지급하면 아무나 "길드마스터"를
+# 길드 직급 목록 (위쪽일수록 높은 직급). 이모지로 셀프 지급하면 아무나 "길마"를
 # 누를 수 있게 되므로, 직급은 아래 멤버 목록에서 관리자가 직접 눌러서만 부여한다.
-GUILD_RANKS = ["길드마스터", "부길드장", "길드원", "신입길드원"]
+GUILD_RANKS = ["길마", "부길마", "간부", "기타 간부", "길드원"]
 
 # 캐릭터 그림 등 미리 준비해둔 이미지를 넣어두는 폴더. 공지/안내 이미지를 고를 때
 # 매번 파일을 다시 올리지 않고 여기서 골라 쓸 수 있게 한다 (아래 "내장 이미지" 탭).
@@ -282,16 +283,36 @@ def _roles(guild_id: int) -> tuple[list, dict]:
     return roles, roles_by_id
 
 
-def _post_embed(channel_id: int, title: str, body: str, image_url: str, image_file, components=None) -> dict:
-    """공지성 임베드 하나를 채널에 올린다. 파일 첨부가 있으면 그걸 우선한다."""
+def _post_embed(
+    guild_id: int, kind: str, channel_id: int, title: str, body: str, image_url: str, image_file, components=None
+) -> dict:
+    """공지성 임베드 하나를 채널에 올리고, 올린 내용을 날짜와 함께 기록 파일에 남긴다.
+    파일 첨부가 있으면 그걸 우선한다. kind는 기록에 적을 종류 이름(예: "공지사항")."""
     embed = {"title": title, "description": body, "color": 0x5B8CFF}
+    image_note = None
     if image_file and image_file.filename:
         filename = image_file.filename
         embed["image"] = {"url": f"attachment://{filename}"}
-        return discord_api.send_message_with_file(channel_id, embed, filename, image_file.read(), components)
-    if image_url:
-        embed["image"] = {"url": image_url}
-    return discord_api.send_message(channel_id, embed, components)
+        image_note = f"파일 첨부 ({filename})"
+        message = discord_api.send_message_with_file(channel_id, embed, filename, image_file.read(), components)
+    else:
+        if image_url:
+            embed["image"] = {"url": image_url}
+            image_note = f"URL {image_url}"
+        message = discord_api.send_message(channel_id, embed, components)
+
+    _record_post(guild_id, kind, channel_id, title, body, message.get("id"), image_note)
+    return message
+
+
+def _record_post(guild_id, kind, channel_id, title, body, message_id=None, image_note=None) -> None:
+    """data/post_log.txt에 글 하나를 남긴다. 채널 이름은 디스코드에 한 번 더 물어봐서 적되,
+    그게 실패해도 기록은 이름 없이 남기고 게시 흐름은 절대 막지 않는다."""
+    try:
+        channel_name = _channels(guild_id)["channels_by_id"].get(int(channel_id))
+    except Exception:  # noqa: BLE001
+        channel_name = None
+    post_log.log_post(guild_id, kind, int(channel_id), channel_name, title, body, message_id, image_note)
 
 
 @app.route("/guild/<int:guild_id>")
@@ -322,11 +343,80 @@ def guild_page(guild_id):
 
 @app.route("/guild/<int:guild_id>/bot-log", methods=["POST"])
 def set_bot_log_channel(guild_id):
-    """업데이트 내역을 자동으로 남길 채널을 지정한다. main.py가 시작할 때(또는 새 버전이
-    감지될 때) CHANGELOG.md의 최신 항목을 이 채널에 올려준다."""
+    """업데이트 내역을 올릴 채널을 지정한다. 무엇을 올릴지는 "업데이트 로그" 페이지에서
+    CHANGELOG.md 항목 중 관리자가 직접 골라서 올린다 (자동으로 올리지 않는다)."""
     channel_id = request.form.get("channel_id")
     settings_store.update_guild_settings(guild_id, bot_log_channel_id=int(channel_id) if channel_id else None)
     return redirect(url_for("guild_page", guild_id=guild_id))
+
+
+def _split_lines(lines: list[str], limit: int = 3900) -> list[str]:
+    """줄 목록을 임베드 설명 길이 제한(4096자)을 넘지 않게 줄 단위로 묶어서 나눈다."""
+    chunks: list[str] = []
+    current = ""
+    for line in lines:
+        if current and len(current) + 1 + len(line) > limit:
+            chunks.append(current)
+            current = line
+        else:
+            current = f"{current}\n{line}" if current else line
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+@app.route("/guild/<int:guild_id>/updates", methods=["GET", "POST"])
+def guild_updates(guild_id):
+    """CHANGELOG.md에 정리해둔 업데이트 항목 중, 관리자가 고른 것만 업데이트 로그 채널에 올린다.
+
+    예전엔 봇이 켜질 때 최신 항목을 자동으로 올렸지만, 올리면 안 되는 내부 수정까지 같이
+    나가는 문제가 있어서 이제는 항목마다 체크해서 올릴 것만 고르게 했다. 이미 올린 항목은
+    기록해뒀다가 "게시됨"으로 표시해준다 (원하면 다시 골라 올릴 수도 있다)."""
+    settings = settings_store.get_guild_settings(guild_id)
+    posted: dict = dict(settings.get("posted_changelog") or {})
+
+    if request.method == "POST":
+        channel_id = request.form.get("channel_id")
+        selected = set(request.form.getlist("items"))
+        if channel_id and selected:
+            channel_id = int(channel_id)
+            now = datetime.now(post_log.KST).strftime("%Y-%m-%d %H:%M")
+            try:
+                # 오래된 날짜부터 올려서, 채널에서 위에서 아래로 시간순으로 읽히게 한다.
+                for entry in reversed(changelog.parse_entries()):
+                    picked = [i for i in entry["items"] if i["key"] in selected]
+                    if not picked:
+                        continue
+                    title = f"🛠️ 레일라 업데이트 ({entry['date']})"
+                    for chunk in _split_lines([f"- {i['text']}" for i in picked]):
+                        message = discord_api.send_message(
+                            channel_id, {"title": title, "description": chunk, "color": 0x5B8CFF}
+                        )
+                        _record_post(guild_id, "🛠️ 업데이트 로그", channel_id, title, chunk, message.get("id"))
+                    for i in picked:
+                        posted[i["key"]] = now
+            finally:
+                # 중간에 실패하더라도 이미 올라간 항목은 "게시됨"으로 남겨서 중복으로 안 올리게 한다.
+                settings_store.update_guild_settings(guild_id, bot_log_channel_id=channel_id, posted_changelog=posted)
+        return redirect(url_for("guild_updates", guild_id=guild_id))
+
+    entries = [
+        {
+            "date": e["date"],
+            "items": [{**i, "posted_at": posted.get(i["key"])} for i in e["items"]],
+        }
+        for e in changelog.parse_entries()
+    ]
+    return render_template(
+        "updates.html",
+        guild_id=guild_id,
+        active="updates",
+        page_title="🔔 업데이트 로그",
+        page_desc="레일라가 정리해둔 업데이트 내용 중, 올리고 싶은 것만 골라서 채널에 올려요.",
+        text_channels=_channels(guild_id)["text_channels"],
+        entries=entries,
+        log_channel_id=settings.get("bot_log_channel_id"),
+    )
 
 
 @app.route("/guild/<int:guild_id>/entrance", methods=["GET", "POST"])
@@ -343,7 +433,9 @@ def guild_entrance(guild_id):
         image_url = (request.form.get("image_url") or "").strip()
         image_file = request.files.get("image_file")
 
-        message = _post_embed(channel_id, title, body, image_url, image_file, ENTRANCE_BUTTON_COMPONENTS)
+        message = _post_embed(
+            guild_id, "🚪 입장 안내", channel_id, title, body, image_url, image_file, ENTRANCE_BUTTON_COMPONENTS
+        )
 
         settings_store.update_guild_settings(
             guild_id,
@@ -396,7 +488,23 @@ def guild_verification(guild_id):
 
     ch = _channels(guild_id)
     roles, _ = _roles(guild_id)
-    verification = settings_store.get_guild_settings(guild_id).get("verification", {})
+    settings = settings_store.get_guild_settings(guild_id)
+    verification = settings.get("verification", {})
+    reviewers = settings.get("verification_reviewers") or {}
+
+    review_members = []
+    for m in discord_api.get_members(guild_id):
+        user = m["user"]
+        if user.get("bot"):
+            continue
+        review_members.append(
+            {
+                "id": user["id"],
+                "name": m.get("nick") or user.get("global_name") or user["username"],
+                "username": user["username"],
+            }
+        )
+
     return render_template(
         "verification.html",
         guild_id=guild_id,
@@ -406,7 +514,25 @@ def guild_verification(guild_id):
         text_channels=ch["text_channels"],
         roles=roles,
         verification=verification,
+        reviewer_roles=[r for r in roles if not r.get("managed")],
+        reviewer_members=sorted(review_members, key=lambda m: m["name"].lower()),
+        reviewer_role_ids=[int(x) for x in reviewers.get("role_ids", [])],
+        reviewer_member_ids=[int(x) for x in reviewers.get("member_ids", [])],
     )
+
+
+@app.route("/guild/<int:guild_id>/verification/reviewers", methods=["POST"])
+def save_verification_reviewers(guild_id):
+    """인증 스레드에 초대하고, 승인/거절 버튼도 누를 수 있는 역할군·멤버를 저장한다.
+
+    인증 안내 문구/채널/역할을 저장하는 폼과는 일부러 따로 저장한다 (한쪽을 저장해도 다른
+    쪽 값이 덮어써지지 않게 settings.json에서도 별도 키로 보관한다)."""
+    role_ids = [int(x) for x in request.form.getlist("role_ids")]
+    member_ids = [int(x) for x in request.form.getlist("member_ids")]
+    settings_store.update_guild_settings(
+        guild_id, verification_reviewers={"role_ids": role_ids, "member_ids": member_ids}
+    )
+    return redirect(url_for("guild_verification", guild_id=guild_id) + "#reviewers")
 
 
 @app.route("/guild/<int:guild_id>/announcements", methods=["GET", "POST"])
@@ -420,7 +546,7 @@ def guild_announcements(guild_id):
         image_url = (request.form.get("image_url") or "").strip()
         image_file = request.files.get("image_file")
 
-        message = _post_embed(channel_id, title, body, image_url, image_file)
+        message = _post_embed(guild_id, "📢 공지사항", channel_id, title, body, image_url, image_file)
 
         settings_store.update_guild_settings(
             guild_id,
@@ -452,7 +578,7 @@ def guild_rules(guild_id):
         image_url = (request.form.get("image_url") or "").strip()
         image_file = request.files.get("image_file")
 
-        message = _post_embed(channel_id, title, body, image_url, image_file)
+        message = _post_embed(guild_id, "📜 길드 규칙", channel_id, title, body, image_url, image_file)
 
         settings_store.update_guild_settings(
             guild_id,
@@ -573,7 +699,7 @@ def post_job_roles(guild_id):
     if lines:
         description += ("\n\n" if description else "") + "\n".join(lines)
 
-    message = _post_embed(channel_id, title, description, image_url, image_file)
+    message = _post_embed(guild_id, "🎭 역할 선택", channel_id, title, description, image_url, image_file)
 
     for emoji in emoji_to_role:
         discord_api.add_reaction(channel_id, message["id"], emoji)
@@ -727,7 +853,7 @@ def guild_ranks(guild_id):
         guild_id=guild_id,
         active="ranks",
         page_title="👑 길드 직급",
-        page_desc="길드마스터/부길드장 같은 직급에 서버 역할을 연결해요.",
+        page_desc="길마/부길마/간부/기타 간부/길드원 직급에 서버 역할을 연결해요.",
         roles=roles,
         guild_ranks=GUILD_RANKS,
         rank_role_ids=rank_role_ids,

@@ -48,6 +48,62 @@
     <button type="submit">💾 캐릭터 인증 설정 저장</button>
   </form>
 </div>
+
+<div class="card" id="reviewers">
+  <div class="card-title">
+    <div class="card-icon">🛡️</div>
+    <h2>인증 담당자</h2>
+  </div>
+  <p class="desc" style="margin-bottom:6px;">
+    길드원이 인증 버튼을 눌러 비공개 채널이 만들어질 때, 여기서 고른 역할군에 속한 사람과
+    멤버들이 자동으로 그 채널에 초대되고 멘션 알림을 받아요. 초대된 사람들은 모두 "✅ 승인 /
+    ❌ 거절" 버튼을 누를 수 있어요 (서버 관리자 / '역할 관리' 권한자는 지정하지 않아도 누를 수
+    있어요). 아무도 고르지 않으면 예전처럼 '역할 관리' 권한이 있는 사람을 자동으로 초대해요.
+    위의 인증 안내 설정과는 따로 저장돼요.
+  </p>
+
+  <form method="post" action="{{ url_for('save_verification_reviewers', guild_id=guild_id) }}">
+    <label>담당 역할군 (이 역할을 가진 사람 전체)</label>
+    <div class="tts-voice-list">
+      {% for r in reviewer_roles %}
+      <label class="tts-voice-row">
+        <input type="checkbox" name="role_ids" value="{{ r.id }}" {% if r.id|int in reviewer_role_ids %}checked{% endif %}>
+        <span>{{ r.name }}</span>
+      </label>
+      {% else %}
+      <p class="desc" style="padding:8px 4px;">선택할 수 있는 역할이 없어요.</p>
+      {% endfor %}
+    </div>
+
+    <label>담당 멤버 (개별 지정)</label>
+    <input type="text" id="reviewer-member-filter" placeholder="이름으로 찾기">
+    <div class="tts-voice-list" id="reviewer-member-list" style="margin-top:8px;">
+      {% for m in reviewer_members %}
+      <label class="tts-voice-row" data-search="{{ (m.name ~ ' ' ~ m.username)|lower }}">
+        <input type="checkbox" name="member_ids" value="{{ m.id }}" {% if m.id|int in reviewer_member_ids %}checked{% endif %}>
+        <span>{{ m.name }} <small style="color:var(--muted);">@{{ m.username }}</small></span>
+      </label>
+      {% else %}
+      <p class="desc" style="padding:8px 4px;">멤버 목록이 비어 있어요 (봇의 SERVER MEMBERS INTENT가 켜져 있는지 확인해주세요).</p>
+      {% endfor %}
+    </div>
+
+    <button type="submit">💾 인증 담당자 저장</button>
+  </form>
+</div>
+
+<script>
+  (function () {
+    const filter = document.getElementById("reviewer-member-filter");
+    if (!filter) return;
+    filter.addEventListener("input", function () {
+      const q = filter.value.trim().toLowerCase();
+      document.querySelectorAll("#reviewer-member-list [data-search]").forEach(function (row) {
+        row.style.display = row.dataset.search.indexOf(q) === -1 ? "none" : "";
+      });
+    });
+  })();
+</script>
 {% endblock %}
 
 {% block preview %}

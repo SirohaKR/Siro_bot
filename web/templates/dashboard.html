@@ -89,7 +89,8 @@
 <div class="card" style="margin-top:20px;">
   <div class="card-title"><div class="card-icon">🔔</div><h2>업데이트 로그</h2></div>
   <p class="desc">
-    레일라가 업데이트될 때마다 바뀐 내용을 이 채널에 자동으로 남겨요 (봇이 켜질 때 확인함).
+    레일라가 업데이트 내용을 정리해두면, 올릴 것만 직접 골라서 이 채널에 올릴 수 있어요
+    (자동으로 올라가지 않아요). 고르고 올리는 건 <a href="{{ url_for('guild_updates', guild_id=guild_id) }}">업데이트 로그 페이지</a>에서 해요.
   </p>
   <form method="post" action="{{ url_for('set_bot_log_channel', guild_id=guild_id) }}">
     <label>업데이트 로그를 남길 채널</label>
