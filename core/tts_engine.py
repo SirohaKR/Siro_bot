@@ -114,6 +114,16 @@ def _typecast_language(text: str) -> str | None:
     return "kor"
 
 
+# 인사말("하이", "안녕", "ㅂㅂ" 등)은 아주 짧아서 무감정(normal)으로 읽으면 뚝뚝 끊기고 딱딱하게
+# 들린다. 그래서 인사말은 다른 뚜렷한 감정이 없으면 "기쁨"을 조금 더(0.6) 얹어서 억양을 부드럽고
+# 반갑게 만든다. "하이킹", "바이러스"처럼 한글이 이어지는 단어는 인사로 치지 않는다.
+_GREETING_INTENSITY = 0.6
+_GREETING_RE = re.compile(
+    r"(?<![가-힣])(?:하이|바이|ㅎㅇ|ㅂㅂ)(?![가-힣])"
+    r"|안녕|반가워|반갑|어서\s?와|환영|굿\s?모닝|굿\s?나잇|좋은\s?(?:아침|하루|밤)|잘\s?가|잘\s?자|수고"
+)
+
+
 def _guess_emotion(text: str) -> str:
     """글에서 뚜렷한 감정 단서를 찾아 preset 이름을 돌려준다. 단서가 없으면 "normal"."""
     for preset, pattern in _EMOTION_CUES:
@@ -128,9 +138,12 @@ def _typecast_prompt(text: str, emotion: str) -> dict:
     if emotion == "off":
         return {"emotion_type": "preset", "emotion_preset": "normal"}
     preset = _guess_emotion(text)  # 원문 기준으로 판단 (초성체 변환 전)
+    intensity = _LOW_EMOTION_INTENSITY
+    if preset == "normal" and _GREETING_RE.search(text):
+        preset, intensity = "happy", _GREETING_INTENSITY
     if preset == "normal":
         return {"emotion_type": "preset", "emotion_preset": "normal"}
-    return {"emotion_type": "preset", "emotion_preset": preset, "emotion_intensity": _LOW_EMOTION_INTENSITY}
+    return {"emotion_type": "preset", "emotion_preset": preset, "emotion_intensity": intensity}
 
 
 async def _call_typecast_tts(
