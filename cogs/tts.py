@@ -31,19 +31,25 @@ from core.tts_voices import DEFAULT_VOICE
 
 MAX_TEXT_LENGTH = 300  # 너무 긴 메시지가 음성채널을 오래 독점하지 않도록 자른다.
 
-_CUSTOM_EMOJI_RE = re.compile(r"<a?:\w+:\d+>")
+# TTS로 읽으면 안 되는 디스코드 표기들. 소리 내어 읽으면 "꺾쇠 골뱅이 일이삼..." 같은 숫자가
+# 나오거나, 이름/이모지 설명이 불필요하게 읽혀서 시끄럽다.
+#  - <@123> <@!123> <@&123> : 사람/역할 멘션,  <#123> : 채널 멘션
+#  - <:이름:123> <a:이름:123> : 서버 커스텀 이모지
+#  - @everyone / @here, 그리고 멘션을 자동완성으로 고르지 않고 직접 쓴 "@이름"
+#    (단어 맨 앞의 @만 — 이메일 주소 가운데의 @는 건드리지 않는다)
+_NON_SPEECH_RE = re.compile(r"<@[!&]?\d+>|<#\d+>|<a?:\w+:\d+>|@(?:everyone|here)|(?<!\S)@\S+")
 
 
-def _is_emoji_only(text: str) -> bool:
-    """이모티콘(서버 커스텀 + 유니코드)만 있고 읽을 만한 글자가 없는 메시지인지 확인한다.
+def _clean_for_tts(text: str) -> str:
+    """읽을 글에서 멘션/채널/이모지(서버 커스텀 + 유니코드)를 모두 뺀 글을 돌려준다.
 
-    이런 메시지는 cogs/big_emoji.py가 이미 크게 키운 이미지로 대신 보여주고 있어서,
-    TTS로 또 "이모지" 같은 걸 읽어주면 어색하다. 이모지를 다 떼어내고도 남는 글자가
-    있으면(예: "ㅋㅋ😂") 그 부분은 정상적으로 읽어준다.
+    글 중간에 섞여 있어도 그 부분만 빼고 나머지는 읽는다 (예: "안녕 <@123> 😂 반가워" →
+    "안녕 반가워"). 뺀 뒤에 남는 글이 없으면 빈 문자열이라 호출하는 쪽에서 읽지 않는다 —
+    이모티콘만 있는 메시지는 cogs/big_emoji.py가 이미 크게 보여주기도 한다.
     """
-    without_custom = _CUSTOM_EMOJI_RE.sub("", text)
-    without_emoji = emoji_lib.replace_emoji(without_custom, replace="")
-    return without_emoji.strip() == ""
+    text = _NON_SPEECH_RE.sub(" ", text)
+    text = emoji_lib.replace_emoji(text, replace=" ")
+    return re.sub(r"\s+", " ", text).strip()
 
 
 class Tts(commands.Cog):
@@ -112,11 +118,9 @@ class Tts(commands.Cog):
     async def on_message(self, message: discord.Message):
         if message.author.bot or message.guild is None:
             return
-        text = message.content.strip()
+        text = _clean_for_tts(message.content)
         if not text:
-            return  # 이미지만 올리거나 빈 메시지면 읽을 게 없다.
-        if _is_emoji_only(text):
-            return  # 이모티콘만 있는 메시지는 big_emoji.py가 크게 보여주니 TTS로는 안 읽는다.
+            return  # 이미지만 올렸거나, 멘션/채널/이모티콘만 있어서 읽을 글이 없다.
 
         settings = get_guild_settings(message.guild.id)
         tts = settings.get("tts") or {}
