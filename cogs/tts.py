@@ -73,10 +73,15 @@ class Tts(commands.Cog):
         guild = voice_channel.guild
         vc = guild.voice_client
 
-        if vc is None:
+        if vc is not None and vc.is_connected():
+            if vc.channel.id != voice_channel.id:
+                return  # 이미 다른 방에 들어가 있으면 그 방에 계속 있고, 이 메시지는 읽지 않는다.
+        elif vc is None:
             vc = await voice_channel.connect()
-        elif vc.channel.id != voice_channel.id:
-            await vc.move_to(voice_channel)
+        else:
+            # 연결 정보만 남고 실제로는 끊긴 상태면 정리하고 새로 들어간다.
+            await vc.disconnect(force=True)
+            vc = await voice_channel.connect()
 
         fd, path = tempfile.mkstemp(suffix=".mp3")
         os.close(fd)
@@ -121,6 +126,12 @@ class Tts(commands.Cog):
         voice_state = message.author.voice
         if voice_state is None or voice_state.channel is None:
             return  # 음성채널에 없으면 읽어줄 곳이 없으니 무시.
+
+        # 봇이 이미 어느 음성채널에 들어가 있으면 그 방에 계속 있는다. 다른 방에 있는
+        # 사람이 TTS 채널에 글을 써도 봇이 옮겨 다니지 않고, 그 글은 읽지 않는다.
+        vc = message.guild.voice_client
+        if vc is not None and vc.is_connected() and vc.channel.id != voice_state.channel.id:
+            return
 
         # 개인 목소리 설정("/목소리설정")이 있으면 그걸 우선 쓰고, 없으면 서버 기본값을 쓴다.
         user_voices: dict = settings.get("tts_user_voices", {})
