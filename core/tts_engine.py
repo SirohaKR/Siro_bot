@@ -100,6 +100,20 @@ _EMOTION_CUES = (
 )
 
 
+_HANGUL_RE = re.compile(r"[가-힣ㄱ-ㅎㅏ-ㅣ]")
+_LATIN_RE = re.compile(r"[A-Za-z]")
+
+
+def _typecast_language(text: str) -> str | None:
+    """합성 언어를 정한다. 안 정하면 타입캐스트가 글에서 언어를 자동으로 추측하는데, "11 22"
+    같은 숫자뿐인 짧은 글은 영어로 추측해서 "일레븐 투엔티투"처럼 읽어버린다. 우리 길드
+    채팅은 한국어라서 기본은 한국어("kor")로 못 박는다. 다만 한글 없이 영어 글자만 있는
+    메시지(영어 문장)는 한국어 발음으로 읽으면 이상하니 자동 추측에 맡긴다(None)."""
+    if _LATIN_RE.search(text) and not _HANGUL_RE.search(text):
+        return None
+    return "kor"
+
+
 def _guess_emotion(text: str) -> str:
     """글에서 뚜렷한 감정 단서를 찾아 preset 이름을 돌려준다. 단서가 없으면 "normal"."""
     for preset, pattern in _EMOTION_CUES:
@@ -130,18 +144,17 @@ async def _call_typecast_tts(
     if prompts[0] != {"emotion_type": "preset", "emotion_preset": "normal"}:
         prompts.append({"emotion_type": "preset", "emotion_preset": "normal"})
 
+    body = {"voice_id": typecast_voice_id, "text": text, "model": "ssfm-v30", "output": {"audio_format": "mp3"}}
+    language = _typecast_language(original_text or text)
+    if language:
+        body["language"] = language
+
     async with aiohttp.ClientSession() as session:
         for i, prompt in enumerate(prompts):
             async with session.post(
                 f"{_TYPECAST_API_BASE}/v1/text-to-speech",
                 headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
-                json={
-                    "voice_id": typecast_voice_id,
-                    "text": text,
-                    "model": "ssfm-v30",
-                    "prompt": prompt,
-                    "output": {"audio_format": "mp3"},
-                },
+                json={**body, "prompt": prompt},
             ) as resp:
                 if resp.status in (400, 422) and i < len(prompts) - 1:
                     continue
