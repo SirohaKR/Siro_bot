@@ -48,8 +48,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJECT_ROOT)
 
 from core import changelog, discord_api, discord_oauth, post_log, settings_store  # noqa: E402
-from core.tts_catalog import list_typecast_voices, search_typecast_voices  # noqa: E402
-from core.tts_engine import synthesize  # noqa: E402
+from core.tts_catalog import USE_CASES_KO, list_typecast_voices, search_typecast_voices  # noqa: E402
+from core.tts_engine import DEFAULT_EMOTION, EMOTION_MODES, synthesize  # noqa: E402
 from core.tts_voices import available_voices  # noqa: E402
 
 load_dotenv()
@@ -57,6 +57,8 @@ load_dotenv()
 WEB_ADMIN_TOKEN = os.getenv("WEB_ADMIN_TOKEN")
 
 app = Flask(__name__)
+# 목소리 검색 필터(_voice_filters.html)의 "용도" 선택지를 템플릿에서 바로 쓰게 한다.
+app.jinja_env.globals["VOICE_USE_CASES"] = USE_CASES_KO
 app.secret_key = os.getenv("FLASK_SECRET_KEY") or os.urandom(24)
 
 if not WEB_ADMIN_TOKEN:
@@ -785,9 +787,14 @@ def guild_tts(guild_id):
     if request.method == "POST":
         channel_id = request.form.get("channel_id")
         voice = (request.form.get("custom_voice") or "").strip() or request.form.get("voice") or ""
+        emotion = request.form.get("emotion")
         settings_store.update_guild_settings(
             guild_id,
-            tts={"channel_id": int(channel_id) if channel_id else None, "voice": voice or None},
+            tts={
+                "channel_id": int(channel_id) if channel_id else None,
+                "voice": voice or None,
+                "emotion": emotion if emotion in EMOTION_MODES else DEFAULT_EMOTION,
+            },
         )
         return redirect(url_for("guild_tts", guild_id=guild_id))
 
@@ -801,6 +808,7 @@ def guild_tts(guild_id):
         page_desc="지정한 채널에 쓴 글을, 글쓴이가 들어가있는 음성채널에서 읽어줘요 (카톡 스타일).",
         text_channels=_channels(guild_id)["text_channels"],
         tts=tts,
+        tts_emotion=tts.get("emotion") if tts.get("emotion") in EMOTION_MODES else DEFAULT_EMOTION,
         tts_voices=_curated_tts_voices(),
     )
 
@@ -809,7 +817,16 @@ def _search_voices_response(query: str):
     """타입캐스트 목소리를 이름/성별/나이/용도로 검색한다. 관리자 페이지("🗣️ TTS")와
     "내 목소리 설정" 오픈 페이지가 같이 쓴다. 검색어가 비어있으면(아직 아무것도 안
     입력했으면) 전체 목록을 돌려줘서, 뭘 찾을지 몰라도 쭉 훑어보며 고를 수 있다."""
-    results = asyncio.run(search_typecast_voices(query))
+    results = asyncio.run(
+        search_typecast_voices(
+            query,
+            gender=request.args.get("gender", ""),
+            age=request.args.get("age", ""),
+            use_case=request.args.get("use", ""),
+            # 기본은 한국어권 목소리만. 화면에서 체크를 풀면 ko=0으로 와서 전부 보여준다.
+            korean_only=request.args.get("ko", "1") != "0",
+        )
+    )
     return jsonify(results)
 
 

@@ -58,7 +58,8 @@
         {% endfor %}
       </div>
 
-      <label style="margin-top:18px;">타입캐스트 목소리에서 검색하기 (이름/성별/나이/용도로 찾아보세요 — 비워두면 전체 목록이 보여요)</label>
+      <label style="margin-top:18px;">타입캐스트 목소리 찾기 (성별/나이/용도로 거르고, 이름으로 검색하세요)</label>
+      {% include "_voice_filters.html" %}
       <input type="text" id="typecast-search-input" placeholder="예: 여성, 청년, 상현, 애니메이션...">
       <div class="tts-voice-list" id="typecast-search-results" style="margin-top:8px;"></div>
 
@@ -136,7 +137,7 @@
     }
 
     function runSearch(q) {
-      fetch("{{ url_for('my_voice_search_voices') }}?q=" + encodeURIComponent(q))
+      fetch("{{ url_for('my_voice_search_voices') }}?q=" + encodeURIComponent(q) + "&" + window.voiceFilterQuery())
         .then(function (res) { return res.json(); })
         .then(renderSearchResults)
         .catch(function () { renderSearchResults([]); });
@@ -148,6 +149,7 @@
         searchTimer = setTimeout(function () { runSearch(searchInput.value.trim()); }, 350);
       });
       runSearch("");  // 페이지 열자마자 전체 목록 한 번 보여주기
+      document.addEventListener("voicefilterchange", function () { runSearch(searchInput.value.trim()); });
     }
   })();
 </script>

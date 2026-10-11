@@ -31,9 +31,26 @@
       {% endfor %}
     </div>
 
-    <label style="margin-top:18px;">타입캐스트 목소리에서 검색하기 (이름/성별/나이/용도로 찾아보세요 — 비워두면 전체 목록이 보여요)</label>
+    <label style="margin-top:18px;">타입캐스트 목소리 찾기 (성별/나이/용도로 거르고, 이름으로 검색하세요)</label>
+    {% include "_voice_filters.html" %}
     <input type="text" id="typecast-search-input" placeholder="예: 여성, 청년, 상현, 애니메이션...">
     <div class="tts-voice-list" id="typecast-search-results" style="margin-top:8px;"></div>
+
+    <label style="margin-top:18px;">감정 표현 (타입캐스트 목소리에만 적용돼요)</label>
+    <div class="tts-voice-list">
+      <label class="tts-voice-row">
+        <input type="radio" name="emotion" value="off" {% if tts_emotion == 'off' %}checked{% endif %}>
+        <span>끄기 — 항상 차분하게 읽어요</span>
+      </label>
+      <label class="tts-voice-row">
+        <input type="radio" name="emotion" value="low" {% if tts_emotion == 'low' %}checked{% endif %}>
+        <span>약하게 (추천) — ㅋㅋ, ㅠㅠ, 욕설처럼 뚜렷할 때만 살짝 감정을 넣어요</span>
+      </label>
+      <label class="tts-voice-row">
+        <input type="radio" name="emotion" value="smart" {% if tts_emotion == 'smart' %}checked{% endif %}>
+        <span>자동 — 문장을 보고 알아서 감정을 넣어요 (꽤 크게 들어가요)</span>
+      </label>
+    </div>
 
     <label style="margin-top:14px;">직접 입력 (선택 — 위 목록에 없는 목소리를 쓰고 싶을 때만)</label>
     <div class="row">
@@ -130,7 +147,7 @@
     }
 
     function runSearch(q) {
-      fetch("{{ url_for('tts_search_voices', guild_id=guild_id) }}?q=" + encodeURIComponent(q))
+      fetch("{{ url_for('tts_search_voices', guild_id=guild_id) }}?q=" + encodeURIComponent(q) + "&" + window.voiceFilterQuery())
         .then(function (res) { return res.json(); })
         .then(renderSearchResults)
         .catch(function () { renderSearchResults([]); });
@@ -142,6 +159,7 @@
         searchTimer = setTimeout(function () { runSearch(searchInput.value.trim()); }, 350);
       });
       runSearch("");  // 페이지 열자마자 전체 목록 한 번 보여주기
+      document.addEventListener("voicefilterchange", function () { runSearch(searchInput.value.trim()); });
     }
   })();
 </script>

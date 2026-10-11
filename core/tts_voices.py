@@ -7,10 +7,11 @@ engine이 "edge"면 무료(edge-tts, 마이크로소프트), "polly"면 AWS Poll
 .env에 AWS 키가 있어야 동작)다. 실제로 어느 쪽으로 합성할지는 core/tts_engine.py가
 이 목록의 engine 값을 보고 정한다.
 
-마이크로소프트 엣지 TTS 목소리 중, 한국어 전용 목소리 외에 "다국어(Multilingual)"
-목소리도 넣어뒀다 — 원래 언어가 한국어가 아니어도 한국어 텍스트를 실제로 읽을 수
-있는 걸 확인했다(edge_tts.list_voices()로 확인 + 직접 합성 테스트 통과).
-새 목소리가 마이크로소프트 쪽에 추가되면 여기 목록도 같이 늘려주면 된다.
+마이크로소프트 엣지 TTS 목소리는 한국어(ko-KR) 로케일인 것만 넣어뒀다 — 지금은
+선히/인준/현수 셋뿐이다(edge_tts.list_voices()로 확인). 영어/프랑스어 등 다른 언어의
+다국어 목소리는 한국어를 읽긴 해도 외국어 억양이라 목록에서 뺐다. 마이크로소프트가
+한국어 목소리를 새로 추가하면 여기 목록도 같이 늘려주면 된다. (빼둔 목소리도 설정
+페이지의 "직접 입력"에 이름을 적으면 여전히 쓸 수 있다)
 
 AWS Polly는 한국어(ko-KR) 목소리가 "서연(Seoyeon)" 하나뿐이다 (2026년 기준).
 id는 "polly:VoiceId:엔진" 형태의 조합 문자열로 만들어서, 같은 목소리를 다른
@@ -32,17 +33,6 @@ TTS_VOICES = [
     {"id": "ko-KR-SunHiNeural", "label": "선히 (여성)", "engine": "edge"},
     {"id": "ko-KR-InJoonNeural", "label": "인준 (남성)", "engine": "edge"},
     {"id": "ko-KR-HyunsuMultilingualNeural", "label": "현수 (남성, 다국어)", "engine": "edge"},
-    {"id": "en-US-AvaMultilingualNeural", "label": "에이바 (여성, 다국어)", "engine": "edge"},
-    {"id": "en-US-AndrewMultilingualNeural", "label": "앤드류 (남성, 다국어)", "engine": "edge"},
-    {"id": "en-US-BrianMultilingualNeural", "label": "브라이언 (남성, 다국어)", "engine": "edge"},
-    {"id": "en-US-EmmaMultilingualNeural", "label": "엠마 (여성, 다국어)", "engine": "edge"},
-    {"id": "en-AU-WilliamMultilingualNeural", "label": "윌리엄 (남성, 다국어)", "engine": "edge"},
-    {"id": "fr-FR-VivienneMultilingualNeural", "label": "비비엔 (여성, 다국어)", "engine": "edge"},
-    {"id": "fr-FR-RemyMultilingualNeural", "label": "레미 (남성, 다국어)", "engine": "edge"},
-    {"id": "de-DE-SeraphinaMultilingualNeural", "label": "세라피나 (여성, 다국어)", "engine": "edge"},
-    {"id": "de-DE-FlorianMultilingualNeural", "label": "플로리안 (남성, 다국어)", "engine": "edge"},
-    {"id": "it-IT-GiuseppeMultilingualNeural", "label": "주세페 (남성, 다국어)", "engine": "edge"},
-    {"id": "pt-BR-ThalitaMultilingualNeural", "label": "탈리타 (여성, 다국어)", "engine": "edge"},
     {
         "id": "polly:Seoyeon:neural",
         "label": "서연 (여성, AWS Polly Neural · 유료 — .env에 AWS 키 필요)",

@@ -1,0 +1,59 @@
+{# 타입캐스트 목소리 검색 필터. 관리자 "TTS" 페이지와 "내 목소리 설정" 페이지가 같이 쓴다.
+   이 파일을 넣은 페이지의 스크립트는 window.voiceFilterQuery()로 현재 필터를 쿼리스트링으로
+   받고, 필터가 바뀔 때마다 document에 "voicefilterchange" 이벤트가 오니 그때 다시 검색한다. #}
+<div class="voice-filters" id="voice-filters">
+  <div class="row" style="gap:8px;">
+    <div>
+      <label>성별</label>
+      <select id="vf-gender">
+        <option value="">전체</option>
+        <option value="female">여성</option>
+        <option value="male">남성</option>
+      </select>
+    </div>
+    <div>
+      <label>나이</label>
+      <select id="vf-age">
+        <option value="">전체</option>
+        <option value="child">아동</option>
+        <option value="teenager">청소년</option>
+        <option value="young_adult">청년</option>
+        <option value="middle_age">중년</option>
+        <option value="elder">노년</option>
+      </select>
+    </div>
+    <div>
+      <label>용도</label>
+      <select id="vf-use">
+        <option value="">전체</option>
+        {% for key, name in VOICE_USE_CASES.items() %}
+        <option value="{{ key }}">{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-top:10px;cursor:pointer;">
+    <input type="checkbox" id="vf-korean" checked style="width:auto;">
+    <span>한국어권 목소리만 보기 <span style="color:var(--muted);">(이름으로 추정해요 — 풀면 전체가 보여요)</span></span>
+  </label>
+</div>
+
+<script>
+  (function () {
+    const ids = { gender: "vf-gender", age: "vf-age", use: "vf-use" };
+
+    window.voiceFilterQuery = function () {
+      const params = new URLSearchParams();
+      Object.keys(ids).forEach(function (key) {
+        const value = document.getElementById(ids[key]).value;
+        if (value) params.set(key, value);
+      });
+      if (!document.getElementById("vf-korean").checked) params.set("ko", "0");
+      return params.toString();
+    };
+
+    document.getElementById("voice-filters").addEventListener("change", function () {
+      document.dispatchEvent(new Event("voicefilterchange"));
+    });
+  })();
+</script>

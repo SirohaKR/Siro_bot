@@ -26,7 +26,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from core.settings_store import get_guild_settings
-from core.tts_engine import synthesize
+from core.tts_engine import DEFAULT_EMOTION, EMOTION_MODES, synthesize
 from core.tts_voices import DEFAULT_VOICE
 
 MAX_TEXT_LENGTH = 300  # 너무 긴 메시지가 음성채널을 오래 독점하지 않도록 자른다.
@@ -81,7 +81,10 @@ class Tts(commands.Cog):
         fd, path = tempfile.mkstemp(suffix=".mp3")
         os.close(fd)
         try:
-            audio_bytes = await synthesize(text, voice_name)
+            emotion = (get_guild_settings(guild.id).get("tts") or {}).get("emotion")
+            if emotion not in EMOTION_MODES:
+                emotion = DEFAULT_EMOTION
+            audio_bytes = await synthesize(text, voice_name, emotion)
             with open(path, "wb") as f:
                 f.write(audio_bytes)
 

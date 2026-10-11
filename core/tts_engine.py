@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 
 import aiohttp
 import edge_tts
@@ -81,28 +82,75 @@ async def _resolve_typecast_voice_id(name: str) -> str:
     raise ValueError(f"타입캐스트에서 '{name}' 목소리를 찾지 못했어요.")
 
 
-async def _call_typecast_tts(text: str, typecast_voice_id: str) -> bytes:
-    """채팅 메시지는 미리 감정을 정해둘 수 없으니(누가 뭘 칠지 모름), "smart" 모드로
-    문장 내용을 보고 어울리는 감정(기쁨/슬픔/화남 등)을 타입캐스트가 알아서 추론해서
-    읽게 한다. 이걸 안 보내면 항상 "normal"(무감정 톤)로만 읽는다."""
+# 타입캐스트 감정 표현 정도 (서버별로 웹 "TTS" 페이지에서 고른다).
+#  - "off"  : 항상 무감정(normal)으로 읽는다.
+#  - "low"  : 글에 뚜렷한 단서(ㅋㅋ, ㅠㅠ, 욕설 등)가 있을 때만 그 감정을 약하게 얹는다 (기본값).
+#  - "smart": 타입캐스트가 문장 내용을 보고 감정을 알아서 추론한다. 세기를 조절할 수 없어서
+#             감정이 꽤 크게 들어간다 (예전 방식).
+# smart 모드에는 세기(intensity) 옵션이 없고 preset 모드에만 있어서, "약하게"는 우리가
+# 글에서 감정을 직접 짐작해 preset으로 보내는 방식이다.
+EMOTION_MODES = ("off", "low", "smart")
+DEFAULT_EMOTION = "low"
+_LOW_EMOTION_INTENSITY = 0.4  # 0=무감정, 1=표준, 2=최대. 너무 약하면 티가 안 나서 0.4로 둠.
+
+_EMOTION_CUES = (
+    ("angry", re.compile(r"ㅅㅂ|ㅆㅂ|ㅈㄴ|씨발|시발|짜증|화나|열받|빡치|꺼져|닥쳐|ㅡㅡ")),
+    ("sad", re.compile(r"[ㅠㅜ]{2,}|슬프|슬퍼|미안|죄송|아쉽|속상|ㅜ_ㅜ")),
+    ("happy", re.compile(r"[ㅋㅎ]{2,}|축하|ㅊㅋ|ㅊㅅ|감사|고마워|좋아|최고|사랑")),
+)
+
+
+def _guess_emotion(text: str) -> str:
+    """글에서 뚜렷한 감정 단서를 찾아 preset 이름을 돌려준다. 단서가 없으면 "normal"."""
+    for preset, pattern in _EMOTION_CUES:
+        if pattern.search(text):
+            return preset
+    return "normal"
+
+
+def _typecast_prompt(text: str, emotion: str) -> dict:
+    if emotion == "smart":
+        return {"emotion_type": "smart"}
+    if emotion == "off":
+        return {"emotion_type": "preset", "emotion_preset": "normal"}
+    preset = _guess_emotion(text)  # 원문 기준으로 판단 (초성체 변환 전)
+    if preset == "normal":
+        return {"emotion_type": "preset", "emotion_preset": "normal"}
+    return {"emotion_type": "preset", "emotion_preset": preset, "emotion_intensity": _LOW_EMOTION_INTENSITY}
+
+
+async def _call_typecast_tts(
+    text: str, typecast_voice_id: str, emotion: str = DEFAULT_EMOTION, original_text: str | None = None
+) -> bytes:
+    """타입캐스트로 합성한다. 감정 방식은 emotion 인자(EMOTION_MODES)로 정한다.
+    목소리마다 지원하는 감정이 다를 수 있어서, 고른 감정을 거절당하면(400/422) 무감정으로
+    한 번 더 시도한다 — 그래야 글자 하나 때문에 소리가 통째로 안 나오는 일이 없다."""
     api_key = os.getenv("TYPECAST_API_KEY", "")
+    prompts = [_typecast_prompt(original_text or text, emotion)]
+    if prompts[0] != {"emotion_type": "preset", "emotion_preset": "normal"}:
+        prompts.append({"emotion_type": "preset", "emotion_preset": "normal"})
+
     async with aiohttp.ClientSession() as session:
-        async with session.post(
-            f"{_TYPECAST_API_BASE}/v1/text-to-speech",
-            headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
-            json={
-                "voice_id": typecast_voice_id,
-                "text": text,
-                "model": "ssfm-v30",
-                "prompt": {"emotion_type": "smart"},
-                "output": {"audio_format": "mp3"},
-            },
-        ) as resp:
-            resp.raise_for_status()
-            return await resp.read()
+        for i, prompt in enumerate(prompts):
+            async with session.post(
+                f"{_TYPECAST_API_BASE}/v1/text-to-speech",
+                headers={"X-API-KEY": api_key, "Content-Type": "application/json"},
+                json={
+                    "voice_id": typecast_voice_id,
+                    "text": text,
+                    "model": "ssfm-v30",
+                    "prompt": prompt,
+                    "output": {"audio_format": "mp3"},
+                },
+            ) as resp:
+                if resp.status in (400, 422) and i < len(prompts) - 1:
+                    continue
+                resp.raise_for_status()
+                return await resp.read()
+    raise RuntimeError("타입캐스트 합성에 실패했어요.")  # 도달하지 않는 경로 (위에서 반환/예외)
 
 
-async def synthesize(text: str, voice_id: str) -> bytes:
+async def synthesize(text: str, voice_id: str, emotion: str = DEFAULT_EMOTION) -> bytes:
     """목소리 ID 하나로 mp3 오디오 바이트를 만들어 돌려준다.
 
     ID 접두사로 어느 엔진인지 스스로 알 수 있게 만들어뒀다:
@@ -110,7 +158,9 @@ async def synthesize(text: str, voice_id: str) -> bytes:
       - "typecast:이름"        → 타입캐스트 (추천 목록, 이름으로 API 조회 후 캐싱)
       - "typecast_id:voice_id" → 타입캐스트 (전체 카탈로그에서 검색해 고른 것, id 그대로 사용)
       - 그 외                  → edge-tts ShortName 그대로 사용
+    emotion은 타입캐스트에서만 쓰인다 (EMOTION_MODES 참고).
     """
+    original_text = text
     text = normalize_for_tts(text)
 
     if voice_id.startswith("polly:"):
@@ -120,11 +170,11 @@ async def synthesize(text: str, voice_id: str) -> bytes:
 
     if voice_id.startswith("typecast_id:"):
         typecast_voice_id = voice_id.split(":", 1)[1]
-        return await _call_typecast_tts(text, typecast_voice_id)
+        return await _call_typecast_tts(text, typecast_voice_id, emotion, original_text)
 
     if voice_id.startswith("typecast:"):
         typecast_name = voice_id.split(":", 1)[1]
         typecast_voice_id = await _resolve_typecast_voice_id(typecast_name)
-        return await _call_typecast_tts(text, typecast_voice_id)
+        return await _call_typecast_tts(text, typecast_voice_id, emotion, original_text)
 
     return await _synthesize_edge(text, voice_id)
