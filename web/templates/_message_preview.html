@@ -7,6 +7,7 @@
     - button_label (선택): 임베드 아래에 버튼 모양을 하나 더 보여주고 싶을 때 그 문구
       (예: 입장 안내 페이지의 "🔑 캐릭터 인증하러 가기" 버튼)
     - extra_note (선택): 미리보기 밑에 한 줄 더 붙일 안내 문구
+    - initial_image_url (선택): 페이지를 열 때 처음부터 보여줄 저장된 이미지 주소
   이미지 미리보기는 _image_picker.html이 쏘는 "image-picker:change" 이벤트를 그대로
   받아서 자동으로 연동된다 — 페이지에서 따로 챙길 게 없다.
 
@@ -74,6 +75,10 @@
           previewImage.hidden = true;
         }
       }
+
+      // 이미 저장해둔 이미지가 있는 페이지(예: 캐릭터 인증)는 열자마자 그걸 보여준다.
+      const initialImage = {{ (initial_image_url|default(""))|tojson }};
+      if (initialImage) renderImage(initialImage);
 
       picker.addEventListener("image-picker:change", function (e) {
         renderImage(e.detail && e.detail.url);

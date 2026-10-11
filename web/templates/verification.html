@@ -8,7 +8,7 @@
     부여됩니다.
   </p>
 
-  <form method="post">
+  <form method="post" enctype="multipart/form-data">
     <label>인증 안내 제목</label>
     <input type="text" name="title" placeholder="예: 🔑 캐릭터 인증" value="{{ verification.title or '' }}">
 
@@ -16,6 +16,15 @@
     {% set target_selector = '[name="body"]' %}
     {% include "_markdown_toolbar.html" %}
     <textarea name="body" rows="10" placeholder="예: 본인 캐릭터가 보이는 스크린샷을 이 채널에 올려주세요.">{{ verification.body or '' }}</textarea>
+
+    {% set image_url_value = (verification.image.value if verification.image and verification.image.type == 'url' else '') %}
+    {% include "_image_picker.html" %}
+    {% if verification.image %}
+    <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-top:6px;cursor:pointer;">
+      <input type="checkbox" name="remove_image" value="1" style="width:auto;">
+      <span>저장된 이미지 지우기 <span style="color:var(--muted);">(현재: {{ '파일 업로드' if verification.image.type == 'file' else 'URL' }} — 새 이미지를 고르면 자동으로 바뀌어요)</span></span>
+    </label>
+    {% endif %}
 
     <div class="row">
       <div>
@@ -110,5 +119,6 @@
 {% set preview_id = "verification" %}
 {% set title_selector = '[name="title"]' %}
 {% set body_selector = '[name="body"]' %}
+{% set initial_image_url = saved_image_url %}
 {% include "_message_preview.html" %}
 {% endblock %}

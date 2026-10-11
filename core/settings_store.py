@@ -17,6 +17,7 @@
       "body": "...",
       "role_id": 333,
       "log_channel_id": 999,
+      "image": {"type": "file", "filename": "verification.png"},   (또는 {"type": "url", "value": "https://..."})
       "threads": {"444(유저ID)": 555(스레드ID)}
     },
     "verification_reviewers": {"role_ids": [111, 222], "member_ids": [333, 444]},
@@ -54,6 +55,11 @@ from typing import Any
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 SETTINGS_PATH = DATA_DIR / "settings.json"
+
+def verification_image_dir() -> Path:
+    """캐릭터 인증 안내에 붙는 이미지 파일을 보관하는 폴더 (data/ 아래라 도커에서도 유지됨)."""
+    return DATA_DIR / "verification_images"
+
 
 _RANK_RENAMES = {"길드마스터": "길마", "부길드장": "부길마"}
 

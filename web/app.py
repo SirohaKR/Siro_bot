@@ -458,6 +458,70 @@ def guild_entrance(guild_id):
     )
 
 
+VERIFICATION_IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".gif", ".webp")
+
+
+def _save_verification_image(guild_id: int, current: dict | None, image_url: str, image_file, remove: bool):
+    """인증 안내에 붙일 이미지를 저장하고 settings에 넣을 값({"type": ...})을 돌려준다.
+
+    새 파일 > 새 URL > (제거 체크 시) 없음 > 기존 값 유지 순서로 정한다. 파일은 봇(main.py)이
+    스레드를 만들 때 읽어야 해서 data/ 아래에 서버당 하나만 두고 덮어쓴다."""
+    folder = settings_store.verification_image_dir()
+
+    def remove_file(path):
+        # 옛 파일 정리는 덤이라, 못 지워도(윈도우에서 파일을 다른 곳이 열고 있을 때 등)
+        # 저장 자체가 실패하면 안 된다.
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def delete_saved_file():
+        if current and current.get("type") == "file":
+            remove_file(folder / os.path.basename(current.get("filename", "")))
+
+    if image_file and image_file.filename:
+        ext = os.path.splitext(image_file.filename)[1].lower()
+        if ext in VERIFICATION_IMAGE_EXTENSIONS:
+            folder.mkdir(parents=True, exist_ok=True)
+            for old in folder.glob(f"verification_{guild_id}.*"):
+                remove_file(old)
+            filename = f"verification_{guild_id}{ext}"
+            image_file.save(folder / filename)
+            return {"type": "file", "filename": filename}
+        return current  # 이미지 형식이 아니면 무시하고 기존 값을 유지
+
+    if image_url:
+        delete_saved_file()
+        return {"type": "url", "value": image_url}
+    if remove:
+        delete_saved_file()
+        return None
+    return current
+
+
+def _verification_image_preview_url(guild_id: int, image: dict | None) -> str:
+    """설정 화면 미리보기에서 저장된 이미지를 보여줄 주소. 이미지가 없으면 빈 문자열."""
+    if not image:
+        return ""
+    if image.get("type") == "url":
+        return image.get("value", "")
+    path = settings_store.verification_image_dir() / os.path.basename(image.get("filename", ""))
+    if not path.is_file():
+        return ""
+    # 같은 이름으로 덮어쓰니, 바뀐 걸 브라우저가 새로 받도록 수정 시각을 붙인다.
+    return url_for("verification_image", guild_id=guild_id, v=int(path.stat().st_mtime))
+
+
+@app.route("/guild/<int:guild_id>/verification/image")
+def verification_image(guild_id):
+    """저장해둔 인증 안내 이미지를 설정 화면 미리보기에 보여준다. (로그인 필요)"""
+    image = (settings_store.get_guild_settings(guild_id).get("verification") or {}).get("image") or {}
+    if image.get("type") != "file":
+        return "", 404
+    return send_from_directory(settings_store.verification_image_dir(), os.path.basename(image.get("filename", "")))
+
+
 @app.route("/guild/<int:guild_id>/verification", methods=["GET", "POST"])
 def guild_verification(guild_id):
     """캐릭터 인증 안내 문구 + 인증 스레드를 만들 채널 + 승인 시 부여할 역할을 저장한다.
@@ -473,7 +537,14 @@ def guild_verification(guild_id):
         log_channel_id = request.form.get("log_channel_id")
 
         settings = settings_store.get_guild_settings(guild_id)
-        existing_threads = (settings.get("verification") or {}).get("threads", {})
+        existing = settings.get("verification") or {}
+        image = _save_verification_image(
+            guild_id,
+            existing.get("image"),
+            (request.form.get("image_url") or "").strip(),
+            request.files.get("image_file"),
+            request.form.get("remove_image") == "1",
+        )
 
         settings_store.update_guild_settings(
             guild_id,
@@ -482,8 +553,9 @@ def guild_verification(guild_id):
                 "role_id": role_id,
                 "title": title,
                 "body": body,
-                "threads": existing_threads,
+                "threads": existing.get("threads", {}),
                 "log_channel_id": int(log_channel_id) if log_channel_id else None,
+                "image": image,
             },
         )
         return redirect(url_for("guild_verification", guild_id=guild_id))
@@ -520,6 +592,8 @@ def guild_verification(guild_id):
         reviewer_members=sorted(review_members, key=lambda m: m["name"].lower()),
         reviewer_role_ids=[int(x) for x in reviewers.get("role_ids", [])],
         reviewer_member_ids=[int(x) for x in reviewers.get("member_ids", [])],
+        builtin_images=_list_builtin_images(),
+        saved_image_url=_verification_image_preview_url(guild_id, verification.get("image")),
     )
 
 

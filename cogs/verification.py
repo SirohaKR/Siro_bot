@@ -22,12 +22,13 @@
 from __future__ import annotations
 
 import io
+import os
 
 import aiohttp
 import discord
 from discord.ext import commands
 
-from core.settings_store import get_guild_settings, update_guild_settings
+from core.settings_store import get_guild_settings, update_guild_settings, verification_image_dir
 
 FILES_PER_MESSAGE = 10  # 디스코드 메시지 하나당 첨부파일 최대 개수
 
@@ -143,6 +144,24 @@ class Verification(commands.Cog):
             ephemeral=True,
         )
 
+    @staticmethod
+    def _attach_intro_image(embed: discord.Embed, image: dict | None) -> discord.File | None:
+        """웹에서 정해둔 인증 안내 이미지를 임베드에 붙인다. URL이면 임베드에 바로 넣고, 업로드한
+        파일이면 첨부파일로 같이 보내야 해서 discord.File을 돌려준다. 이미지가 없거나 파일이
+        사라졌으면 그냥 이미지 없이 안내만 보낸다."""
+        if not image:
+            return None
+        if image.get("type") == "url" and image.get("value"):
+            embed.set_image(url=image["value"])
+            return None
+        if image.get("type") == "file":
+            filename = os.path.basename(image.get("filename", ""))
+            path = verification_image_dir() / filename
+            if filename and path.is_file():
+                embed.set_image(url=f"attachment://{filename}")
+                return discord.File(path, filename=filename)
+        return None
+
     async def _get_or_create_thread(
         self,
         guild: discord.Guild,
@@ -184,7 +203,8 @@ class Verification(commands.Cog):
         title = verification.get("title") or "캐릭터 인증"
         body = verification.get("body") or "인증할 캐릭터 이미지를 이 채널에 업로드해주세요."
         embed = discord.Embed(title=title, description=body, color=0x5B8CFF)
-        await thread.send(content=member.mention, embed=embed)
+        intro_file = self._attach_intro_image(embed, verification.get("image"))
+        await thread.send(content=member.mention, embed=embed, **({"file": intro_file} if intro_file else {}))
 
         # 비공개 스레드는 초대된 사람만 볼 수 있어서, 만들어둬도 담당자가 못 보고 지나칠 수
         # 있다. 웹 "인증 담당자"에서 지정한 역할군/멤버(없으면 '역할 관리' 권한자)를
